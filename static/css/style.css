@@ -41,6 +41,8 @@ h1 .method { color: var(--accent); }
 .authors, .affiliations, .notes { margin: 0 auto; }
 .authors { font-size: 1.08rem; max-width: 880px; }
 .authors span { display: inline-block; margin: 0 9px; white-space: nowrap; }
+.authors a { color: #2563a8; text-decoration: none; }
+.authors a:hover { text-decoration: underline; }
 .affiliations { margin-top: 10px; color: var(--muted); font-size: 0.98rem; }
 .affiliations span { display: inline-block; margin: 0 9px; }
 .notes { margin-top: 6px; color: var(--muted); font-size: 0.88rem; }
