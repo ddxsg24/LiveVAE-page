@@ -1,273 +1,440 @@
-:root {
-  --text: #1f2328;
-  --muted: #59636e;
-  --accent: #b8322f;
-  --rule: #e6e8eb;
-  --bg-soft: #f6f8fa;
-  --max: 1040px;
-}
+// Step by step animation of LiveVAE streaming inference (Method section).
+// Steps 1 to 3 are schematic; steps 4 and 5 use real frames of a Wan2.2 reconstruction clip.
+(() => {
+  const root = document.getElementById('stream-explainer');
+  if (!root) return;
 
-* { box-sizing: border-box; }
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = root.querySelector('.ex-stage');
+  const beats = [...root.querySelectorAll('.ex-beat')];
+  const segs = [...root.querySelectorAll('.ex-seg')];
+  const fills = segs.map((s) => s.querySelector('i'));
+  const playBtn = root.querySelector('.ex-play');
+  const count = root.querySelector('.ex-count');
+  const durations = beats.map((b) => Number(b.dataset.dur) * 1000);
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-html { scroll-behavior: smooth; }
+  const C = {
+    line: '#8a919b', paper: '#ffffff', grid: '#cfd4da', ghost: '#f3f4f6', ghostLine: '#b9bec6',
+    enc: '#f6caa2', encLine: '#d98b4a', lat: '#f0a463', outLine: '#d77aa0',
+    win: '#ffe08a', winLine: '#d4a400', query: '#7c7ac4', queryDark: '#4d4a9c', done: '#d9d8f0',
+  };
 
-body {
-  margin: 0;
-  color: var(--text);
-  background: #fff;
-  font: 17px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-  -webkit-font-smoothing: antialiased;
-}
+  const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+  const seg = (p, a, b) => clamp((p - a) / (b - a));
+  const ease = (t) => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2);
+  const mix = (c1, c2, t) => {
+    const a = parseInt(c1.slice(1), 16);
+    const b = parseInt(c2.slice(1), 16);
+    const ch = (s) => Math.round(((a >> s) & 255) * (1 - t) + ((b >> s) & 255) * t);
+    return `rgb(${ch(16)},${ch(8)},${ch(0)})`;
+  };
 
-.hero, main, footer {
-  max-width: var(--max);
-  margin: 0 auto;
-  padding: 0 24px;
-}
+  function el(tag, attrs, parent) {
+    const node = document.createElementNS(NS, tag);
+    for (const k in attrs) node.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(node);
+    return node;
+  }
+  function label(str, attrs, parent) {
+    const t = el('text', attrs, parent);
+    t.textContent = str;
+    return t;
+  }
+  // Math label such as "O_prev": italic serif symbols, small upright subscripts.
+  // parts: [text, kind] with kind '' (symbol), 'sub' (subscript) or 'plain' (upright text).
+  function mathText(parts, attrs, parent) {
+    const t = el('text', { class: 'math', ...attrs }, parent);
+    let lowered = false;
+    for (const [s, kind] of parts) {
+      const span = el('tspan', {}, t);
+      span.textContent = s;
+      if (kind === 'sub') {
+        span.setAttribute('class', 'sub');
+        if (!lowered) span.setAttribute('dy', '5');
+        lowered = true;
+      } else {
+        if (kind === 'plain') span.setAttribute('class', 'plain');
+        if (lowered) span.setAttribute('dy', '-5');
+        lowered = false;
+      }
+    }
+    return t;
+  }
+  const show = (node, o) => { node.style.opacity = o; };
+  const tName = (r) => (r === 0 ? 't' : r > 0 ? `t+${r}` : `t−${-r}`);
 
-.hero { text-align: center; padding-top: 64px; padding-bottom: 8px; }
+  el('defs', {}, svg).innerHTML = `
+    <marker id="ex-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,1 L9,5 L0,9 z" fill="${C.line}"/></marker>
+    <marker id="ex-arrow-y" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,1 L9,5 L0,9 z" fill="${C.winLine}"/></marker>
+    <marker id="ex-arrow-q" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,1 L9,5 L0,9 z" fill="${C.query}"/></marker>`;
 
-h1 {
-  font-size: 2.3rem;
-  line-height: 1.25;
-  font-weight: 700;
-  margin: 0 auto 28px;
-  max-width: 900px;
-  letter-spacing: -0.01em;
-}
+  // A flat token grid with a 7x7 window and a query cell, drawn at (x, y).
+  const NU = 13, NV = 9, WIN = 7;
+  function flatGrid(parent, x, y, cs, opts = {}) {
+    const g = el('g', { transform: `translate(${x},${y})` }, parent);
+    el('rect', { width: NU * cs, height: NV * cs, fill: opts.fill || C.paper, stroke: opts.stroke || '#5b6470', 'stroke-width': 1.3 }, g);
+    const cells = el('g', {}, g);
+    let d = '';
+    for (let u = 1; u < NU; u++) d += `M${u * cs},0V${NV * cs}`;
+    for (let v = 1; v < NV; v++) d += `M0,${v * cs}H${NU * cs}`;
+    el('path', { d, stroke: C.grid, 'stroke-width': 0.8, fill: 'none' }, g);
+    const win = el('rect', { width: WIN * cs, height: WIN * cs, fill: C.win, 'fill-opacity': 0.55, stroke: C.winLine, 'stroke-width': 2 }, g);
+    const q = el('rect', { width: cs, height: cs, fill: C.query, stroke: C.queryDark, 'stroke-width': 1 }, g);
+    const place = (qu, qv) => {
+      const wu = clamp(qu - 3, 0, NU - WIN);
+      const wv = clamp(qv - 3, 0, NV - WIN);
+      win.setAttribute('x', wu * cs); win.setAttribute('y', wv * cs);
+      q.setAttribute('x', qu * cs); q.setAttribute('y', qv * cs);
+    };
+    return { g, cells, win, q, place, cs, w: NU * cs, h: NV * cs };
+  }
 
-h1 .method { color: var(--accent); }
+  // ---------------------------------------------------------------------------
+  // Scene 1: the 2x7x7 causal window, sliding forward in time.
+  // ---------------------------------------------------------------------------
+  const slide = el('g', { class: 'scene' }, svg);
+  const CS = 15;
+  const SKEW = { a: 0.85, b: -0.32 };
+  const GY = 140;
+  const fx = (r) => 330 + 235 * r;               // left edge of latent frame r (r = -1 is t-1)
+  const proj = (r, u, v) => [fx(r) + SKEW.a * u, GY + SKEW.b * u + v];
+  const persp = {};
+  for (const r of [-1, 0, 1, 2]) {
+    const outer = el('g', {}, slide);
+    const ghost = el('g', {}, outer);
+    const solid = el('g', {}, outer);
+    const m = `matrix(${SKEW.a},${SKEW.b},0,1,${fx(r)},${GY})`;
+    const gg = el('g', { transform: m }, ghost);
+    el('rect', { width: NU * CS, height: NV * CS, fill: C.ghost, stroke: C.ghostLine, 'stroke-width': 1.3, 'stroke-dasharray': '5 4', 'vector-effect': 'non-scaling-stroke' }, gg);
+    const sg = el('g', { transform: m }, solid);
+    el('rect', { width: NU * CS, height: NV * CS, fill: C.paper, stroke: '#5b6470', 'stroke-width': 1.3, 'vector-effect': 'non-scaling-stroke' }, sg);
+    let d = '';
+    for (let u = 1; u < NU; u++) d += `M${u * CS},0V${NV * CS}`;
+    for (let v = 1; v < NV; v++) d += `M0,${v * CS}H${NU * CS}`;
+    el('path', { d, stroke: C.grid, 'stroke-width': 0.8, fill: 'none', 'vector-effect': 'non-scaling-stroke' }, sg);
+    const win = el('rect', { width: WIN * CS, height: WIN * CS, fill: C.win, 'fill-opacity': 0.6, stroke: C.winLine, 'stroke-width': 2, 'vector-effect': 'non-scaling-stroke' }, sg);
+    const q = el('rect', { width: CS, height: CS, fill: C.query, stroke: C.queryDark, 'stroke-width': 1, 'vector-effect': 'non-scaling-stroke' }, sg);
+    const [lx, ly] = proj(r, 0, NV * CS);
+    const name = label(tName(r), { x: lx + 4, y: ly + 24, class: 'tlabel' }, outer);
+    const note = label('', { x: lx + 4, y: ly + 44, class: 'note' }, outer);
+    persp[r] = { ghost, solid, win, q, name, note };
+  }
+  const bracket = el('g', {}, slide);
+  const bLine = el('path', { fill: 'none', stroke: C.winLine, 'stroke-width': 2 }, bracket);
+  const bText = label('causal window 2 × 7 × 7', { y: 36, 'text-anchor': 'middle', class: 'tag' }, bracket);
+  const slideCap = label('', { x: 500, y: 330, 'text-anchor': 'middle', class: 'lbl' }, slide);
+  const legend1 = el('g', { transform: 'translate(24,446)' }, slide);
+  el('rect', { x: 0, y: -11, width: 13, height: 13, fill: C.query }, legend1);
+  label('query', { x: 19, y: 0, class: 'lbl' }, legend1);
+  el('rect', { x: 78, y: -11, width: 13, height: 13, fill: C.win, stroke: C.winLine }, legend1);
+  label('window', { x: 97, y: 0, class: 'lbl' }, legend1);
 
-.authors, .affiliations, .notes { margin: 0 auto; }
-.authors { font-size: 1.08rem; max-width: 880px; }
-.authors span { display: inline-block; margin: 0 9px; white-space: nowrap; }
-.authors a { color: #2563a8; text-decoration: none; }
-.authors a:hover { text-decoration: underline; }
-.affiliations { margin-top: 10px; color: var(--muted); font-size: 0.98rem; }
-.affiliations span { display: inline-block; margin: 0 9px; }
-.notes { margin-top: 6px; color: var(--muted); font-size: 0.88rem; }
-sup { font-size: 0.68em; line-height: 0; }
+  // The query wanders a little inside each frame so the spatial window moves too.
+  const wander = [[3, 2], [5, 3], [7, 4], [9, 5], [11, 6], [12, 7]];
 
-.links { margin: 26px 0 8px; display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
-.button {
-  display: inline-block;
-  padding: 8px 18px;
-  border-radius: 999px;
-  background: var(--text);
-  color: #fff;
-  text-decoration: none;
-  font-size: 0.95rem;
-  font-weight: 500;
-}
-.button:hover { background: #000; }
-.button.disabled { background: #d0d7de; color: #57606a; cursor: default; }
+  function drawSlide(p) {
+    // c is the index of the current latent frame: 0 (t), then 1 (t+1), then 2 (t+2).
+    const c = ease(seg(p, 0.3, 0.4)) + ease(seg(p, 0.66, 0.76));
+    const local = c < 0.5 ? seg(p, 0, 0.3) : c < 1.5 ? seg(p, 0.4, 0.66) : seg(p, 0.76, 1);
+    const [qu, qv] = wander[Math.min(wander.length - 1, Math.floor(local * wander.length))];
+    const cur = Math.round(c);
+    for (const r of [-1, 0, 1, 2]) {
+      const f = persp[r];
+      const on = clamp(1.5 - Math.abs(r - (c - 0.5)));   // part of the 2-frame window
+      const arrived = clamp(c - r + 1);
+      show(f.solid, arrived * (0.35 + 0.65 * on));
+      show(f.ghost, 1 - arrived);
+      const wu = clamp(qu - 3, 0, NU - WIN), wv = clamp(qv - 3, 0, NV - WIN);
+      f.win.setAttribute('x', wu * CS); f.win.setAttribute('y', wv * CS);
+      f.q.setAttribute('x', qu * CS); f.q.setAttribute('y', qv * CS);
+      show(f.win, on);
+      show(f.q, clamp(1 - Math.abs(r - c) * 2));
+      f.name.setAttribute('class', r === cur ? 'tlabel now' : 'tlabel');
+      f.note.textContent = r > c + 0.5 ? 'not arrived yet' : r < c - 1.5 ? 'no longer read' : '';
+    }
+    const xl = fx(c - 1) + 6;
+    const xr = fx(c) + SKEW.a * NU * CS - 6;
+    bLine.setAttribute('d', `M${xl},56 V46 H${xr} V56`);
+    bText.setAttribute('x', (xl + xr) / 2);
+    slideCap.textContent = cur === 0
+      ? 'Queries of frame t read frames t−1 and t'
+      : cur === 1 ? 'Frame t+1 arrives: the window now covers t and t+1' : 'Frame t+2 arrives: the window covers t+1 and t+2';
+  }
 
-section { padding: 34px 0 6px; }
+  // ---------------------------------------------------------------------------
+  // Scene 2: keys and values of t-1 come from the KV cache; each query gives one output token.
+  // ---------------------------------------------------------------------------
+  const kv = el('g', { class: 'scene' }, svg);
+  el('rect', { x: 26, y: 112, width: 244, height: 196, rx: 12, fill: '#fffbea', stroke: C.winLine, 'stroke-width': 1.5, 'stroke-dasharray': '6 4' }, kv);
+  label('KV cache', { x: 40, y: 104, class: 'tag' }, kv);
+  const cacheSets = [0, 1].map((i) => {
+    const g = el('g', {}, kv);
+    const K = flatGrid(g, 40, 160, 7.6, { fill: '#fff6cc', stroke: C.winLine });
+    const V = flatGrid(g, 156, 160, 7.6, { fill: '#fff6cc', stroke: C.winLine });
+    for (const m of [K, V]) { show(m.q, 0); show(m.win, 0); }
+    const sub = i === 0 ? 't−1' : 't';
+    mathText([['K', ''], [sub, 'sub']], { x: 40 + 49, y: 254, 'text-anchor': 'middle' }, g);
+    mathText([['V', ''], [sub, 'sub']], { x: 156 + 49, y: 254, 'text-anchor': 'middle' }, g);
+    return { g, K, V };
+  });
+  const cacheNote = label('computed one step earlier', { x: 148, y: 290, 'text-anchor': 'middle', class: 'small' }, kv);
+  const ft = flatGrid(kv, 380, 136, 14);
+  label('frame t: queries, keys, values', { x: 380 + ft.w / 2, y: 124, 'text-anchor': 'middle', class: 'lbl' }, kv);
+  const ot = flatGrid(kv, 700, 136, 14);
+  show(ot.win, 0); show(ot.q, 0);
+  label('output tokens of frame t', { x: 700 + ot.w / 2, y: 124, 'text-anchor': 'middle', class: 'lbl' }, kv);
+  const outCells = [];
+  for (let v = 0; v < NV; v++) {
+    for (let u = 0; u < NU; u++) {
+      outCells.push(el('rect', { x: u * 14 + 1, y: v * 14 + 1, width: 12, height: 12, fill: C.query, rx: 1.5 }, ot.cells));
+    }
+  }
+  const camWin = el('rect', { width: WIN * 7.6, height: WIN * 7.6, fill: 'none', stroke: C.winLine, 'stroke-width': 2, 'stroke-dasharray': '4 3' }, cacheSets[0].K.g);
+  el('line', { x1: 272, y1: 210, x2: 372, y2: 210, stroke: C.winLine, 'stroke-width': 2, 'marker-end': 'url(#ex-arrow-y)' }, kv);
+  label('read', { x: 322, y: 202, 'text-anchor': 'middle', class: 'small' }, kv);
+  el('line', { x1: 568, y1: 210, x2: 692, y2: 210, stroke: C.query, 'stroke-width': 2, 'marker-end': 'url(#ex-arrow-q)' }, kv);
+  label('one output per query', { x: 630, y: 202, 'text-anchor': 'middle', class: 'small' }, kv);
+  const writeChip = el('g', {}, kv);
+  el('rect', { x: -30, y: -15, width: 60, height: 30, rx: 5, fill: C.win, stroke: C.winLine, 'stroke-width': 1.4 }, writeChip);
+  mathText([['K', ''], ['t', 'sub'], [' ', 'plain'], ['V', ''], ['t', 'sub']], { x: 0, y: 3, 'text-anchor': 'middle' }, writeChip);
+  const kvCap = label('', { x: 500, y: 400, 'text-anchor': 'middle', class: 'lbl' }, kv);
 
-h2 {
-  font-size: 1.6rem;
-  margin: 0 0 16px;
-  text-align: center;
-  letter-spacing: -0.005em;
-}
+  function drawKv(p) {
+    const scan = seg(p, 0.04, 0.7);
+    const n = NU * NV;
+    const k = Math.min(n - 1, Math.floor(scan * n));
+    const qu = k % NU, qv = Math.floor(k / NU);
+    ft.place(qu, qv);
+    show(ft.q, p < 0.72 ? 1 : 0);
+    show(ft.win, p < 0.72 ? 1 : 0);
+    const wu = clamp(qu - 3, 0, NU - WIN), wv = clamp(qv - 3, 0, NV - WIN);
+    camWin.setAttribute('x', wu * 7.6); camWin.setAttribute('y', wv * 7.6);
+    show(camWin, p < 0.72 ? 1 : 0);
+    outCells.forEach((cell, i) => {
+      const filled = i < k || (scan >= 1);
+      cell.setAttribute('fill', i === k && scan < 1 ? C.query : C.done);
+      show(cell, filled || i === k ? 1 : 0);
+    });
+    // Frame t is done: its keys and values move into the cache and replace those of t-1.
+    const move = ease(seg(p, 0.76, 0.92));
+    writeChip.setAttribute('transform', `translate(${471 + (148 - 471) * move},${330 - 120 * move})`);
+    show(writeChip, seg(p, 0.72, 0.76) * (1 - seg(p, 0.92, 0.97)));
+    show(cacheSets[0].g, 1 - seg(p, 0.86, 0.94));
+    show(cacheSets[1].g, seg(p, 0.9, 0.98));
+    cacheNote.textContent = p < 0.88 ? 'computed one step earlier' : 'ready for frame t+1';
+    kvCap.textContent = p < 0.72
+      ? 'Each query reads its window in frame t and the same window of the cached keys and values of t−1'
+      : 'Frame t is done: its keys and values replace those of t−1 in the cache';
+  }
 
-p { margin: 0 0 16px; }
-.abstract { text-align: justify; hyphens: none; }
+  // ---------------------------------------------------------------------------
+  // Scene 3: the 2x7x7 attention as two 2D window attentions, merged exactly.
+  // ---------------------------------------------------------------------------
+  const pass = el('g', { class: 'scene' }, svg);
+  const gA = flatGrid(pass, 40, 64, 13, { fill: '#fff6cc', stroke: C.winLine });
+  const gB = flatGrid(pass, 40, 268, 13);
+  gA.place(6, 4); gB.place(6, 4);
+  gA.q.setAttribute('fill', 'none'); gA.q.setAttribute('stroke-dasharray', '3 2');
+  label('Cached K, V · previous frame', { x: 40, y: 54, class: 'lbl' }, pass);
+  label('K, V · current frame', { x: 40, y: 258, class: 'lbl' }, pass);
+  function roundBox(x, y, w, h, fill, stroke, parent) {
+    return el('rect', { x: x - w / 2, y: y - h / 2, width: w, height: h, rx: 8, fill, stroke, 'stroke-width': 1.4 }, parent);
+  }
+  const P1 = { x: 430, y: 122 }, P2 = { x: 430, y: 326 }, PM = { x: 760, y: 224 };
+  roundBox(P1.x, P1.y, 230, 62, '#fffaf0', C.winLine, pass);
+  label('2D attention · previous', { x: P1.x, y: P1.y - 8, 'text-anchor': 'middle', class: 'lbl' }, pass);
+  mathText([['O', ''], ['prev', 'sub'], [' ,  ', 'plain'], ['L', ''], ['prev', 'sub']], { x: P1.x, y: P1.y + 18, 'text-anchor': 'middle' }, pass);
+  roundBox(P2.x, P2.y, 230, 62, '#fffaf0', C.winLine, pass);
+  label('2D attention · current', { x: P2.x, y: P2.y - 8, 'text-anchor': 'middle', class: 'lbl' }, pass);
+  mathText([['O', ''], ['cur', 'sub'], [' ,  ', 'plain'], ['L', ''], ['cur', 'sub']], { x: P2.x, y: P2.y + 18, 'text-anchor': 'middle' }, pass);
+  const mBox = roundBox(PM.x, PM.y, 300, 70, '#f4f3fb', C.query, pass);
+  mathText([['O', ''], [' = ', 'plain'], ['α', ''], ['prev', 'sub'], ['O', ''], ['prev', 'sub'], [' + ', 'plain'], ['α', ''], ['cur', 'sub'], ['O', ''], ['cur', 'sub']], { x: PM.x, y: PM.y - 4, 'text-anchor': 'middle' }, pass);
+  mathText([['[α', ''], ['prev', 'sub'], [', α', ''], ['cur', 'sub'], ['] = softmax([', 'plain'], ['L', ''], ['prev', 'sub'], [', ', 'plain'], ['L', ''], ['cur', 'sub'], ['])', 'plain']], { x: PM.x, y: PM.y + 22, 'text-anchor': 'middle', class: 'math small-math' }, pass);
+  label('Joint attention over 98 keys', { x: PM.x, y: PM.y + 62, 'text-anchor': 'middle', class: 'note strong' }, pass);
+  label('L = log normalizer', { x: PM.x, y: PM.y + 82, 'text-anchor': 'middle', class: 'small' }, pass);
+  const paths = {
+    a: el('path', { d: `M${40 + gA.w + 8},${64 + gA.h / 2} L${P1.x - 120},${P1.y}`, fill: 'none', stroke: C.winLine, 'stroke-width': 1.6, 'marker-end': 'url(#ex-arrow-y)' }, pass),
+    b: el('path', { d: `M${40 + gB.w + 8},${268 + gB.h / 2} L${P2.x - 120},${P2.y}`, fill: 'none', stroke: C.winLine, 'stroke-width': 1.6, 'marker-end': 'url(#ex-arrow-y)' }, pass),
+    m1: el('path', { d: `M${P1.x + 116},${P1.y + 10} L${PM.x - 120},${PM.y - 36}`, fill: 'none', stroke: C.query, 'stroke-width': 1.6, 'marker-end': 'url(#ex-arrow-q)' }, pass),
+    m2: el('path', { d: `M${P2.x + 116},${P2.y - 10} L${PM.x - 120},${PM.y + 36}`, fill: 'none', stroke: C.query, 'stroke-width': 1.6, 'marker-end': 'url(#ex-arrow-q)' }, pass),
+  };
+  const dots = Object.fromEntries(Object.keys(paths).map((k) => [k, el('circle', { r: 5, fill: k.length === 1 ? C.winLine : C.query }, pass)]));
+  const placeDot = (k, t) => {
+    const path = paths[k];
+    const pt = path.getPointAtLength(path.getTotalLength() * t);
+    dots[k].setAttribute('cx', pt.x); dots[k].setAttribute('cy', pt.y);
+    show(dots[k], t > 0 && t < 1 ? 1 : 0);
+  };
 
-figure { margin: 18px 0 8px; }
-figure img, figure video { display: block; width: 100%; height: auto; }
-figure.wide { margin-left: -24px; margin-right: -24px; }
-figcaption {
-  margin-top: 10px;
-  color: var(--muted);
-  font-size: 0.92rem;
-  line-height: 1.55;
-}
-figure.wide figcaption { padding: 0 24px; }
+  function drawPass(p) {
+    const t1 = seg(p, 0.06, 0.34);
+    placeDot('a', t1); placeDot('b', t1);
+    const t2 = seg(p, 0.42, 0.68);
+    placeDot('m1', t2); placeDot('m2', t2);
+    const glow = seg(p, 0.68, 0.76);
+    mBox.setAttribute('stroke-width', 1.4 + 2.2 * glow);
+    gB.q.setAttribute('stroke-width', 1 + 3 * glow);
+  }
 
-.stats {
-  list-style: none;
-  padding: 0;
-  margin: 26px 0 6px;
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 18px;
-  text-align: center;
-}
-.stats strong { display: block; font-size: 2rem; color: var(--accent); line-height: 1.2; }
-.stats span { display: block; color: var(--muted); font-size: 0.92rem; margin-top: 4px; }
+  // ---------------------------------------------------------------------------
+  // Scenes 4 and 5: encoding and decoding a real clip, one latent frame per step.
+  // Sprites hold frames 0 to 32 (7 per row, 200 x 117 pitch, 196 x 113 frames).
+  // ---------------------------------------------------------------------------
+  const SPRITE = { input: 'static/explainer/walk_input.jpg', output: 'static/explainer/walk_output.jpg' };
+  function frameView(parent, which, x, y, w, h) {
+    const box = el('svg', { x, y, width: w, height: h, viewBox: '0 0 194 111', preserveAspectRatio: 'none' }, parent);
+    const img = el('image', { href: SPRITE[which], width: 1568, height: 782 }, box);
+    el('rect', { x, y, width: w, height: h, fill: 'none', stroke: which === 'input' ? '#5b6470' : C.outLine, 'stroke-width': 1.2 }, parent);
+    let shown = -1;
+    return (k) => {
+      if (k === shown) return;
+      shown = k;
+      img.setAttribute('x', -((k % 7) * 200 + 1));
+      img.setAttribute('y', -(Math.floor(k / 7) * 117 + 1));
+    };
+  }
 
-/* Result tabs */
-.tabs { display: flex; justify-content: center; gap: 6px; flex-wrap: wrap; margin: 4px 0 14px; }
-.tabs [role="tab"] {
-  border: 1px solid var(--rule); background: #fff; color: var(--muted);
-  padding: 6px 16px; border-radius: 999px; font: inherit; font-size: 0.92rem; font-weight: 600; cursor: pointer;
-}
-.tabs [role="tab"]:hover { color: var(--text); }
-.tabs [role="tab"][aria-selected="true"] { background: var(--text); border-color: var(--text); color: #fff; }
-/* Step by step streaming explainer */
-.explainer { margin: 24px 0 10px; }
-.ex-head { display: grid; grid-template-columns: 36px 1fr 36px; align-items: center; gap: 14px; }
-.ex-nav {
-  width: 34px; height: 34px; padding: 0;
-  border: 1px solid var(--rule); border-radius: 50%;
-  background: #fff; color: var(--muted); cursor: pointer;
-  display: grid; place-items: center;
-}
-.ex-nav:hover { color: var(--text); border-color: #c4c9cf; }
-.ex-nav svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.ex-words { display: grid; min-height: 96px; align-items: center; }
-.ex-beat { grid-area: 1 / 1; opacity: 0; visibility: hidden; transition: opacity .35s ease, visibility 0s .35s; }
-.ex-beat.is-active { opacity: 1; visibility: visible; transition: opacity .35s ease; }
-.ex-title { margin: 0 0 4px; font-weight: 650; font-size: 1.04rem; display: flex; align-items: center; gap: 9px; }
-.ex-n {
-  flex: none; width: 22px; height: 22px; border-radius: 50%;
-  background: var(--accent); color: #fff; font-size: 0.78rem; font-weight: 700;
-  display: grid; place-items: center;
-}
-.ex-line { margin: 0; color: var(--muted); font-size: 0.95rem; line-height: 1.55; }
-.ex-stage-wrap { overflow-x: auto; margin-top: 6px; }
-.ex-stage { display: block; width: 100%; min-width: 660px; height: auto; }
-.ex-stage text { font-size: 15px; fill: #3b424a; }
-.ex-stage .lbl { font-size: 14px; fill: #59636e; }
-.ex-stage .lbl.strong { fill: var(--accent); font-weight: 600; }
-.ex-stage .box { font-size: 14px; font-weight: 600; fill: #7a4a1e; }
-.ex-stage .kv { font-size: 11px; font-weight: 700; fill: #7a5c00; }
-.ex-stage .tag { font-size: 13px; font-weight: 600; fill: #8a6a00; }
-.ex-stage .tlabel { font-size: 17px; fill: #7a828c; font-style: italic; font-family: "Times New Roman", Times, serif; }
-.ex-stage .tlabel.now { fill: #4d4a9c; font-weight: 700; }
-.ex-stage .note { font-size: 13px; fill: #8a919b; font-style: italic; }
-.ex-stage .note.strong { fill: #4d4a9c; font-style: normal; font-weight: 600; }
-.ex-stage .big { font-size: 20px; font-weight: 600; fill: #3b424a; }
-.ex-stage .small { font-size: 12.5px; fill: #59636e; }
-.ex-stage .math { font-family: "Times New Roman", Times, serif; font-style: italic; font-size: 19px; fill: #2b2f36; }
-.ex-stage .math .sub { font-size: 12px; font-style: normal; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; }
-.ex-stage .math .plain { font-style: normal; }
-.ex-stage .math.small-math { font-size: 15px; }
-.ex-stage .scene { transition: opacity .45s ease; }
-.ex-controls { display: flex; align-items: center; gap: 12px; margin-top: 4px; }
-.ex-play {
-  flex: none; width: 32px; height: 32px; padding: 0;
-  border: 1px solid var(--rule); border-radius: 50%;
-  background: #fff; color: var(--text); cursor: pointer;
-  display: grid; place-items: center;
-}
-.ex-play svg { width: 14px; height: 14px; fill: currentColor; }
-.ex-play .i-pause, .ex-play.is-playing .i-play { display: none; }
-.ex-play.is-playing .i-pause { display: inline; }
-.ex-bar { flex: 1; display: flex; gap: 5px; }
-.ex-seg {
-  flex: var(--w) 1 0; height: 16px; padding: 0; border: 0; background: none; cursor: pointer; position: relative;
-}
-.ex-seg::before, .ex-seg i {
-  content: ""; position: absolute; left: 0; right: 0; top: 6px; height: 4px; border-radius: 2px;
-}
-.ex-seg::before { background: #e3e6ea; }
-.ex-seg i { background: var(--accent); transform-origin: left center; transform: scaleX(0); }
-.ex-count { flex: none; min-width: 3em; text-align: right; font-size: 0.85rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+  const walk = el('g', { class: 'scene' }, svg);
+  const inputView = frameView(walk, 'input', 124, 46, 320, 184);
+  const outputView = frameView(walk, 'output', 556, 46, 320, 184);
+  const outputCover = el('rect', { x: 556, y: 46, width: 320, height: 184, fill: C.ghost }, walk);
+  const waiting = label('Waiting for the first latent', { x: 716, y: 143, 'text-anchor': 'middle', class: 'lbl' }, walk);
+  const inputCaption = label('', { x: 284, y: 32, 'text-anchor': 'middle', class: 'lbl' }, walk);
+  const outputCaption = label('', { x: 716, y: 32, 'text-anchor': 'middle', class: 'lbl strong' }, walk);
+  const rows = [['Input frames', 302], ['Encoder latent', 350], ['Decoder output', 398]];
+  const chunkCount = 9;
+  const tracks = rows.map(([name, y], row) => {
+    label(name, { x: 148, y: y + 5, 'text-anchor': 'end', class: 'lbl' }, walk);
+    return Array.from({ length: chunkCount }, (_, k) => {
+      const x = 166 + k * 86;
+      const cell = el('rect', { x, y: y - 15, width: 78, height: 30, rx: 4 }, walk);
+      const first = k === 0 ? 0 : 4 * k - 3;
+      const range = k === 0 ? '0' : first + '–' + (4 * k);
+      label(row === 1 ? 'z' + '₀₁₂₃₄₅₆₇₈'[k] : range,
+        { x: x + 39, y: y + 5, 'text-anchor': 'middle', class: 'small' }, walk);
+      return cell;
+    });
+  });
+  const streamStatus = label('', { x: 500, y: 264, 'text-anchor': 'middle', class: 'lbl' }, walk);
+  label('Frame 0, then four frames per chunk', { x: 166, y: 441, class: 'small' }, walk);
 
+  // The same stream clock spans both beats. At k+.65 latent k is ready and decoding
+  // begins. Its final frame appears at k+1.4, after the next input has started.
+  function drawWalk(t) {
+    let newestInput = 0;
+    let newestOutput = -1;
+    let latestLatent = -1;
+    const colors = ['#e1e6eb', '#f4cca1', '#edd2dd'];
+    for (let k = 0; k < chunkCount; k++) {
+      const age = t - k;
+      const first = k === 0 ? 0 : 4 * k - 3;
+      const span = k === 0 ? 0 : 3;
+      if (age >= 0) newestInput = first + Math.floor(span * seg(age, 0, .52));
+      if (age >= .65) latestLatent = k;
+      if (age >= .83) newestOutput = first + Math.floor(span * seg(age, .83, 1.4));
+      const starts = [0, .65, .83];
+      const ends = [.52, .83, 1.4];
+      tracks.forEach((track, r) => {
+        const started = age >= starts[r];
+        const active = started && age < ends[r];
+        track[k].setAttribute('fill', started ? colors[r] : '#f8f9fa');
+        track[k].setAttribute('stroke', active ? C.queryDark : '#dce1e6');
+        track[k].setAttribute('stroke-width', active ? 2.4 : 1);
+      });
+    }
+    inputView(newestInput);
+    if (newestOutput >= 0) outputView(newestOutput);
+    show(outputCover, newestOutput < 0 ? 1 : 0);
+    show(waiting, newestOutput < 0 ? 1 : 0);
+    inputCaption.textContent = 'Input · frame ' + newestInput;
+    outputCaption.textContent = newestOutput < 0 ? 'LiveVAE output' : 'LiveVAE output · frame ' + newestOutput;
+    if (latestLatent < 0) streamStatus.textContent = 'Encoding the first frame';
+    else if (newestOutput === 32) streamStatus.textContent = 'All 33 frames reconstructed';
+    else streamStatus.textContent = 'Latent ' + latestLatent + ' is available to the decoder';
+  }
 
+  // ---------------------------------------------------------------------------
+  // Playback: one beat at a time, with text, progress bar and controls.
+  // ---------------------------------------------------------------------------
+  let beat = 0;
+  let elapsed = 0;
+  let playing = false;
+  let userPaused = reduceMotion;
+  let inView = false;
+  let last = 0;
+  let raf = 0;
 
-.bibtex { position: relative; }
-.bibtex pre {
-  margin: 0;
-  padding: 18px 20px;
-  background: var(--bg-soft);
-  border-radius: 8px;
-  overflow-x: auto;
-  font: 0.86rem/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-}
-.copy {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  border: 0;
-  border-radius: 6px;
-  padding: 4px 10px;
-  background: #fff;
-  color: var(--muted);
-  font-size: 0.8rem;
-  cursor: pointer;
-}
-.copy:hover { color: var(--text); }
+  function draw() {
+    const p = clamp(elapsed / durations[beat]);
+    show(slide, beat === 0 ? 1 : 0);
+    show(kv, beat === 1 ? 1 : 0);
+    show(pass, beat === 2 ? 1 : 0);
+    show(walk, beat >= 3 ? 1 : 0);
+    if (beat === 0) drawSlide(p);
+    if (beat === 1) drawKv(p);
+    if (beat === 2) drawPass(p);
+    if (beat === 3) drawWalk(3 * p);
+    if (beat === 4) drawWalk(3 + 6.5 * p);
+    fills.forEach((fi, i) => { fi.style.transform = `scaleX(${i < beat ? 1 : i === beat ? p : 0})`; });
+  }
 
-footer { padding-top: 40px; padding-bottom: 48px; color: var(--muted); font-size: 0.88rem; text-align: center; }
+  function setBeat(i) {
+    beat = (i + beats.length) % beats.length;
+    elapsed = 0;
+    beats.forEach((b, j) => b.classList.toggle('is-active', j === beat));
+    segs.forEach((s, j) => s.setAttribute('aria-current', j === beat ? 'step' : 'false'));
+    count.textContent = `${beat + 1} / ${beats.length}`;
+    draw();
+  }
 
-@media (max-width: 760px) {
-  body { font-size: 16px; }
-  h1 { font-size: 1.65rem; }
-  .stats { grid-template-columns: 1fr; gap: 12px; }
-  figure.wide { margin-left: -12px; margin-right: -12px; }
-}
+  function frame(now) {
+    const dt = Math.min(now - last, 100);
+    last = now;
+    elapsed += dt;
+    if (elapsed >= durations[beat]) setBeat(beat + 1);
+    draw();
+    raf = playing ? requestAnimationFrame(frame) : 0;
+  }
 
-/* A shared player supplies the matching frame to both comparison panels. */
-[hidden] { display: none !important; }
-.panel-note { max-width: 790px; margin: 0 auto 14px; text-align: center; color: var(--muted); font-size: .94rem; }
-.result-tools, .compare-options, .example-nav, .transport, .mode-buttons { display: flex; align-items: center; }
-.result-tools { flex-wrap: wrap; justify-content: center; gap: 12px 20px; margin: 16px 0; }
-.comparison { border: 1px solid #d6dade; border-radius: 12px; overflow: hidden; background: #fff; }
-.comparison:focus-visible, .chart-scroll:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-.example-head, .compare-options, .transport { padding: 12px 16px; }
-.example-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
-.example-head h3, .eff-card h3 { margin: 0; color: var(--text); font-size: 1.07rem; }
-.example-head p, #example-count, #frame-time { margin: 0; color: var(--muted); font-size: .84rem; font-variant-numeric: tabular-nums; }
-.example-nav { gap: 9px; white-space: nowrap; }
-.comparison button, #results select { border: 1px solid #ccd2d8; background: white; color: var(--text); cursor: pointer; font: inherit; }
-button.arrow { width: 36px; height: 36px; border-radius: 50%; font: 25px/1 Arial, sans-serif; }
-.comparison button:disabled { opacity: .45; cursor: default; }
-#results select { border-radius: 5px; font-size: .85rem; padding: 4px 6px; }
-#results label { display: inline-flex; gap: 6px; align-items: center; font-size: .84rem; color: var(--muted); }
-.compare-options { flex-wrap: wrap; gap: 8px 16px; border-top: 1px solid var(--rule); background: var(--bg-soft); }
-.mode-buttons { margin-left: auto; }
-.mode-buttons button { font-size: .82rem; padding: 4px 9px; }
-.mode-buttons button:first-child { border-radius: 5px 0 0 5px; }
-.mode-buttons button:last-child { border-radius: 0 5px 5px 0; }
-.mode-buttons button[aria-pressed=true] { background: #303842; color: white; border-color: #303842; }
-.compare-stage { --split: 50%; --tile: 16 / 9; position: relative; display: grid; grid-template-columns: 1fr 1fr; gap: 2px; background: #303842; overflow: hidden; }
-.compare-stage .view { position: relative; margin: 0; min-width: 0; aspect-ratio: var(--tile); }
-.view canvas { width: 100%; height: 100%; display: block; }
-.compare-stage figcaption { position: absolute; z-index: 1; left: 8px; top: 8px; margin: 0; border-radius: 4px; background: #1b2029d9; color: #fff; padding: 2px 7px; font-size: .78rem; font-weight: 600; }
-.compare-stage.is-wipe { display: block; aspect-ratio: var(--tile); }
-.is-wipe .view { position: absolute; inset: 0; }
-.is-wipe .view-a { z-index: 1; clip-path: inset(0 calc(100% - var(--split)) 0 0); }
-.is-wipe .view-b figcaption { right: 8px; left: auto; }
-.wipe-range, #wipe-handle { display: none; }
-.is-wipe .wipe-range { display: block; opacity: 0; position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; z-index: 4; cursor: ew-resize; touch-action: pan-y; }
-.is-wipe #wipe-handle { display: block; position: absolute; pointer-events: none; left: var(--split); top: 0; bottom: 0; z-index: 3; width: 2px; background: white; box-shadow: 0 0 4px #0008; }
-#wipe-handle span { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); background: #fff; color: #303842; padding: 1px 8px 3px; border-radius: 16px; white-space: nowrap; box-shadow: 0 1px 6px #0006; font: bold 21px/1 Arial; }
-.compare-stage:focus-within { outline: 3px solid var(--accent); outline-offset: -3px; }
-.transport { gap: 12px; }
-.transport button { min-width: 58px; border-radius: 5px; padding: 4px 8px; font-size: .84rem; }
-.transport input { flex: 1; min-width: 30px; }
-#results input { accent-color: var(--accent); }
-#frame-time { min-width: 90px; text-align: right; }
-#conditioning, #media-status { margin: 0 16px 12px; font-size: .86rem; color: var(--muted); }
-#conditioning summary { cursor: pointer; font-weight: 600; }
-#conditioning p { margin: 8px 0; }
-#reference-still { width: 190px; max-width: 100%; margin: 10px 0 0; }
-@keyframes gallery-enter { from { transform: translateX(var(--enter, 12px)); opacity: .7; } to { transform: translateX(0); opacity: 1; } }
-@media (prefers-reduced-motion: no-preference) { .compare-stage.enter { animation: gallery-enter .18s ease-out; } }
+  function setPlaying(on) {
+    playing = on;
+    playBtn.classList.toggle('is-playing', on);
+    playBtn.setAttribute('aria-label', on ? 'Pause' : 'Play');
+    if (on && !raf) { last = performance.now(); raf = requestAnimationFrame(frame); }
+    if (!on) { cancelAnimationFrame(raf); raf = 0; draw(); }
+  }
 
-/* Every axis uses the same SVG viewBox and the same 320-unit column. */
-.chart-scroll { overflow-x: auto; }
-.eff-grid { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,2fr); column-gap: 16px; min-width: 775px; }
-.eff-card { margin: 0; display: grid; grid-template-rows: subgrid; grid-row: span 4; }
-.eff-card h3 { padding: 8px 0; font-size: 1rem; }
-.infra-plots, .infra-key { display: grid; grid-template-columns: 1fr 1fr; }
-.eff-card img, .eff-card svg { width: 100%; height: auto; display: block; }
-.eff-card .chart-key { padding: 8px 4px; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
-.key-row { display: flex; flex-wrap: wrap; gap: 2px 10px; align-content: start; font-size: .72rem; color: var(--muted); line-height: 1.6; }
-.key-row span { white-space: nowrap; }
-.r480 { color: #198d83; } .r720 { color: #ce607d; } .r1080 { color: #8c71bb; } .r4k { color: #c18a2a; }
-.opt-a { color: #d99989; } .opt-b { color: #c45f56; } .opt-c { color: #952d2d; }
-.eff-card figcaption { padding: 0 3px 4px; font-size: .84rem; }
-.eff-card a { color: #2563a8; white-space: nowrap; }
-@media (max-width: 590px) {
-  .hero, main, footer { padding-left: 14px; padding-right: 14px; }
-  .example-head, .compare-options, .transport { padding: 9px; }
-  .result-tools { gap: 8px; }
-  .mode-buttons { margin-left: 0; }
-  .tabs [role=tab] { padding: 5px 9px; font-size: .83rem; }
-  .compare-stage figcaption { font-size: .68rem; top: 4px; left: 4px; }
-  .ex-head { grid-template-columns: 30px 1fr 30px; gap: 7px; }
-}
+  playBtn.addEventListener('click', () => {
+    userPaused = playing;
+    if (!playing && elapsed >= durations[beat]) elapsed = 0;
+    setPlaying(!playing);
+  });
+  root.querySelector('.ex-prev').addEventListener('click', () => setBeat(beat - 1));
+  root.querySelector('.ex-next').addEventListener('click', () => setBeat(beat + 1));
+  segs.forEach((s, i) => s.addEventListener('click', () => setBeat(i)));
+  root.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight') { setBeat(beat + 1); e.preventDefault(); }
+    if (e.key === 'ArrowLeft') { setBeat(beat - 1); e.preventDefault(); }
+  });
+
+  if ('IntersectionObserver' in window) {
+    new IntersectionObserver((entries) => {
+      inView = entries[0].isIntersecting;
+      if (inView && !userPaused) setPlaying(true);
+      if (!inView && playing) setPlaying(false);
+    }, { threshold: 0.35 }).observe(svg);
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && playing) setPlaying(false);
+    else if (!document.hidden && inView && !userPaused) setPlaying(true);
+  });
+
+  setBeat(0);
+  // On narrow screens the stage scrolls sideways; start with its middle in view.
+  const wrap = svg.parentElement;
+  wrap.scrollLeft = (wrap.scrollWidth - wrap.clientWidth) / 2;
+})();
