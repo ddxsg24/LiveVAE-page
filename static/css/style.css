@@ -103,7 +103,10 @@ details .abstract { margin-top: 12px; }
 .step-n { display: grid; place-items: center; flex: none; width: 24px; height: 24px; border-radius: 50%; background: var(--text); color: #fff; font-size: 13px; font-weight: 650; letter-spacing: 0; }
 .step-line { margin-top: 4px !important; color: var(--muted); font-size: 16px; line-height: 1.6; max-width: 760px; }
 .step-stage { position: relative; min-height: 340px; margin: 18px 0 0; display: grid; align-items: center; }
-.step-view { width: 100%; }
+.step-view { width: 100%; grid-area: 1 / 1; }
+/* Keep inactive steps in the layout (invisible) so the stage keeps the height of the tallest step and the page does not jump. */
+.step-stage > .step-view[hidden] { display: block !important; visibility: hidden; pointer-events: none; }
+.step-stage > .loc-probe[hidden] { display: grid !important; }
 .step-bar { display: flex; align-items: center; gap: 14px; margin: 18px 0 10px; }
 .step-play { flex: none; width: 36px; height: 36px; border: 1px solid var(--rule); border-radius: 50%; background: #fff; color: var(--text); display: grid; place-items: center; cursor: pointer; }
 .step-play svg { width: 16px; height: 16px; fill: currentColor; }
@@ -327,6 +330,7 @@ footer { padding-top: 44px; padding-bottom: 48px; color: var(--muted); font-size
   .teaser-pair { gap: 6px; }
 }
 @media (max-width: 480px) {
+  .step-words { min-height: 180px; }
   .hero, main, footer { padding-left: 16px; padding-right: 16px; }
   .authors span, .affiliations span { margin: 0 6px; }
   .all-labels span { font-size: 9.5px; }

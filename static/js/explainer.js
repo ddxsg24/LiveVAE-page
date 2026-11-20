@@ -102,6 +102,8 @@
     if ('IntersectionObserver' in window) {
       new IntersectionObserver(([e]) => { visible = e.isIntersecting; sync(); }, { threshold: .25 }).observe(root);
     } else { visible = true; }
+    // Draw every step once so the stage is sized by the tallest step from the start.
+    views.forEach((v, i) => draws[i](1, v));
     select(0);
     sync();
   }
