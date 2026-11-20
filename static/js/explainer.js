@@ -518,9 +518,10 @@
     return v;
   }
 
-  // Pipelined streaming: in every step the encoder turns chunk t into latent t while the decoder,
-  // in parallel, decodes latent t − 1, which the encoder produced one step earlier. Each block keeps
-  // its own KV cache of one step: it reads the K, V written in its previous step and overwrites them.
+  // Streaming as a pipeline. Each column is one time step, and everything in a column runs in that
+  // step: the encoder turns chunk t into latent t while, in parallel, the decoder turns latent t − 1
+  // (made by the encoder one step earlier) into frames. The only link between the two rows is that
+  // latent. Each block keeps its own KV cache of one step, passed along its own row.
   function drawStream(t, view) {
     const s = view.querySelector('svg');
     const ROW = { inp: 70, enc: 156, lat: 234, dec: 312, out: 398 };
@@ -530,12 +531,11 @@
       markers(s, 'ms-');
       const fixed = svg(s, 'g');
       [['input', 'inp'], ['encoder', 'enc'], ['latent', 'lat'], ['decoder', 'dec'], ['output', 'out']]
-        .forEach(([text, k]) => svg(fixed, 'text', { x: 52, y: ROW[k] + 5, class: 's-row' }, text));
+        .forEach(([text, k]) => svg(fixed, 'text', { x: 4, y: ROW[k] + 5, class: 's-row' }, text));
+      // The current step is one column, outlined in purple as in panel (d).
+      s.curCol = svg(s, 'rect', { x: X0 - 47, y: 19, width: 94, height: 449, rx: 10, class: 's-curcol' });
       [['t − 2', ''], ['t − 1', 'past'], ['t', 'current'], ['t + 1', '']]
-        .forEach(([text, cls], i) => svg(fixed, 'text', { x: X0 + (i - 2) * DX, y: 456, class: 's-t ' + cls }, text));
-      // The encoder of step t and the decoder of step t − 1 run together: a band joins them.
-      s.band = svg(s, 'line', { class: 's-band' });
-      s.bandText = svg(s, 'text', { class: 's-bandtext' }, 'same step');
+        .forEach(([text, cls], i) => svg(fixed, 'text', { x: X0 + (i - 2) * DX, y: 462, class: 's-t ' + cls }, text));
       s.head = svg(s, 'text', { x: X0 - DX / 2, y: 13, class: 's-head' });
 
       // Card j = 0 is the front card. Cards of one chunk fan out up and to the right.
@@ -562,7 +562,8 @@
         return c;
       };
       // K/V box right of a block; its gold arrow points into the same block one column later.
-      const kv = (g, yy, label) => {
+      // The encoder tag sits above its box; the decoder tag below, clear of the latent arrow.
+      const kv = (g, yy, label, below) => {
         const link = svg(g, 'line', { x1: 73, y1: yy, x2: DX - 37, y2: yy, class: 's-link', 'marker-end': 'url(#ms-y)' });
         const grp = svg(g, 'g', { transform: `translate(60 ${yy})` });
         const box = svg(grp, 'rect', { x: -11, y: -16, width: 22, height: 32, rx: 2 });
@@ -570,35 +571,46 @@
         const v = svg(grp, 'text', { x: 0, y: 12, class: 's-kv' }, 'V');
         const token = svg(g, 'g');
         svg(token, 'rect', { x: -9, y: -7, width: 18, height: 14, rx: 2, class: 's-token' });
-        const tag = svg(g, 'text', { x: 60, y: yy - 27, class: 's-tag kvtag' }, label);
-        const evict = svg(g, 'text', { x: 60, y: yy + 30, class: 's-evict' }, 'evicted');
+        const tag = svg(g, 'text', { x: 60, y: below ? yy + 33 : yy - 40, class: 's-tag kvtag' });
+        svg(tag, 'tspan', { x: 60 }, label);
+        svg(tag, 'tspan', { x: 60, dy: '1.15em' }, 'KV cache');
+        const evict = svg(g, 'text', { x: 60, y: yy + 33, class: 's-evict' }, 'evicted');
         return { grp, box, text: [k, v], link, token, tag, evict };
       };
       s.cols = [0, 1, 2, 3, 4].map(() => {
         const g = svg(s, 'g');
         const c = { g };
-        c.ghost = svg(g, 'g', { class: 's-ghost' });
-        ghostStack(c.ghost, ROW.inp);
-        trap(c.ghost, ROW.enc, true); trap(c.ghost, ROW.dec, false);
-        svg(c.ghost, 'rect', { x: -13, y: ROW.lat - 13, width: 26, height: 26 });
-        ghostStack(c.ghost, ROW.out);
-        c.end = svg(g, 'text', { x: 0, y: ROW.inp - CH / 2 - 18, class: 's-range' }, 'end of clip');
-        c.range = svg(g, 'text', { x: OFF * 1.5, y: ROW.inp - CH / 2 - 18, class: 's-range' });
+        // Dashed placeholders, shown where a block has nothing to do (yet).
+        const ghost = svg(g, 'g', { class: 's-ghost' });
+        c.gIn = svg(ghost, 'g'); ghostStack(c.gIn, ROW.inp);
+        c.gEnc = svg(ghost, 'g'); trap(c.gEnc, ROW.enc, true);
+        c.gLat = svg(ghost, 'rect', { x: -13, y: ROW.lat - 13, width: 26, height: 26 });
+        c.gDec = svg(ghost, 'g'); trap(c.gDec, ROW.dec, false);
+        c.gOut = svg(ghost, 'g'); ghostStack(c.gOut, ROW.out);
+        c.end = svg(g, 'text', { x: 0, y: ROW.inp - CH / 2 - 15, class: 's-range' }, 'end of clip');
+        c.wait = svg(g, 'text', { x: 0, y: ROW.dec + 36, class: 's-range' }, 'waiting for');
+        c.wait2 = svg(g, 'text', { x: 0, y: ROW.dec + 50, class: 's-range' }, 'the first latent');
+        c.range = svg(g, 'text', { x: 0, y: ROW.inp - CH / 2 - 15, class: 's-range' });
         c.inp = cards(svg(g, 'g'), ROW.inp, 0);
         c.a1 = svg(g, 'line', { x1: 0, y1: ROW.inp + 22, x2: 0, y2: ROW.enc - 24, class: 's-arrow' });
         c.encG = svg(g, 'g'); c.enc = trap(c.encG, ROW.enc, true);
         c.a2 = svg(g, 'line', { x1: 0, y1: ROW.enc + 22, x2: 0, y2: ROW.lat - 24, class: 's-arrow' });
         c.latG = svg(g, 'g'); c.lat = cube(c.latG, ROW.lat);
-        c.a3 = svg(g, 'line', { x1: 0, y1: ROW.lat + 16, x2: 0, y2: ROW.dec - 24, class: 's-arrow' });
+        // Data, not cache: latent t − 1 from the previous column goes down into this decoder.
+        const lx1 = -DX + 14, ly1 = ROW.lat + 12, lx2 = -24, ly2 = ROW.dec - 22;
+        c.lin = svg(g, 'line', { x1: lx1, y1: ly1, x2: lx2, y2: ly2, class: 's-arrow s-data' });
+        const ang = Math.atan2(ly2 - ly1, lx2 - lx1), mx = lx1 + .38 * (lx2 - lx1) + 6 * Math.sin(ang), my = ly1 + .38 * (ly2 - ly1) - 6 * Math.cos(ang);
+        c.linText = svg(g, 'text', { x: mx, y: my, class: 's-latlabel', transform: `rotate(${ang * 180 / Math.PI} ${mx} ${my})` }, 'latent t−1');
         c.decG = svg(g, 'g'); c.dec = trap(c.decG, ROW.dec, false);
         c.a4 = svg(g, 'line', { x1: 0, y1: ROW.dec + 22, x2: 0, y2: ROW.out - 32, class: 's-arrow' });
         c.out = cards(svg(g, 'g'), ROW.out, 1);
-        // Copies that travel: input frames into the encoder, the latent into the decoder,
+        c.outRange = svg(g, 'text', { x: 0, y: ROW.out + CH / 2 + 15, class: 's-range' });
+        // Copies that travel: input frames into the encoder, latent t − 1 into the decoder,
         // decoded frames out of the decoder.
         c.toEnc = svg(g, 'g'); c.toEncCards = cards(c.toEnc, ROW.inp, 0);
-        c.latCopy = cube(svg(g, 'g'), ROW.lat);
+        c.latCopy = cube(svg(g, 'g'), 0);
         c.fromDec = svg(g, 'g'); c.fromDecCards = cards(c.fromDec, ROW.out, 1);
-        c.kvE = kv(g, ROW.enc, 'encoder KV cache'); c.kvD = kv(g, ROW.dec, 'decoder KV cache');
+        c.kvE = kv(g, ROW.enc, 'encoder', false); c.kvD = kv(g, ROW.dec, 'decoder', true);
         return c;
       });
       // Two players: the input as it arrives, and the LiveVAE output up to the last decoded frame.
@@ -617,12 +629,12 @@
     const tt = clamp(t / .97) * TICKS;
     const k = Math.min(TICKS - 1, Math.floor(tt)), f = Math.min(1, tt - k);
     const lastTick = k === TICKS - 1;
-    const doEnc = k < LATENTS, doDec = k >= 1;      // encode chunk k, decode latent k − 1
+    const doEnc = k < LATENTS, doDec = k >= 1;      // step k: encode chunk k, decode latent k − 1
     const shift = lastTick ? 0 : ease(part(f, .88, 1));
     const arrive = doEnc ? part(f, 0, .14) : 1;
-    const hand = part(f, .12, .28);                 // both caches are handed in at the same moment
-    const feed = ease(part(f, .2, .34));            // frames into Enc, latent t − 1 into Dec
-    const busy = part(f, .3, .36) * (1 - part(f, .56, .62));
+    const hand = part(f, .12, .28);                 // both caches move along their own rows
+    const feed = ease(part(f, .2, .36));            // frames into Enc, latent t − 1 into Dec
+    const busy = part(f, .34, .4) * (1 - part(f, .56, .62));
     const emit = ease(part(f, .56, .7));            // latent t appears, decoded frames leave Dec
     const write = part(f, .64, .74);                // both blocks write their new K, V
     const play = part(f, .68, .84);
@@ -646,93 +658,87 @@
       });
       return n;
     };
-    // K/V of a block written at step `at`: purple when written, gold while the next step reads it,
-    // grey once that step has written its own. `reads` says whether the next step runs this block.
+    // K/V written at step `at`: purple when written, gold while the next step reads it, grey once
+    // that step has written its own. `reads` says whether the next step runs this block at all.
     const kvState = (at, reads) => {
       if (k < at) return [0, 0];
       if (k === at) return [write > 0 ? 2 - shift : 0, write];
-      if (k === at + 1) return reads ? [1 - write, 1] : [1, 1];
-      return [0, 1];
+      if (k === at + 1) return reads ? [1 - write, 1 - shift] : [1, 1];
+      return reads ? [0, 0] : [1, 1];
     };
 
     s.cols.forEach((c, i) => {
-      const r = i - 3, rr = r - shift, L = k + r;
+      const r = i - 3, rr = r - shift, L = k + r;   // column of step L; r = 0 is the current step
       c.g.setAttribute('transform', `translate(${X0 + rr * DX} 0)`);
-      const real = L >= 0 && L < LATENTS;
-      op(c.g, L < 0 ? 0 : rr < -2 ? clamp((rr + 2.6) / .6) : 1);
-      op(c.end, L === LATENTS && r <= 0 ? 1 : 0);
-      op(c.ghost, L <= LATENTS && r >= 0 ? 1 : r === -1 ? 1 : 0);
-      const hideAll = () => {
-        [c.inp, c.out].forEach(set => set.forEach(x => op(x, 0)));
-        [c.a1, c.a2, c.a3, c.a4, c.encG, c.latG, c.decG, c.toEnc, c.latCopy, c.fromDec, c.range]
-          .forEach(x => op(x, 0));
-        for (const kv of [c.kvE, c.kvD]) [kv.grp, kv.link, kv.token, kv.tag, kv.evict].forEach(x => op(x, 0));
-      };
-      if (!real || r > 0) { hideAll(); return; }
-      const n = chunk(L)[1] - chunk(L)[0] + 1;
-      const encNow = r === 0, decNow = r === -1;   // the two blocks that run in this step
-      // Input: the chunk lands, then copies drop into the encoder.
-      fill(c.inp, L, encNow ? arrive * n : n);
-      c.range.textContent = rangeText(L);
-      op(c.range, encNow ? clamp(arrive * 4) : 1);
-      fill(c.toEncCards, L, n);
-      op(c.toEnc, encNow && feed > 0 ? 1 - part(f, .3, .34) : 0);
+      op(c.g, L < 0 || L > LATENTS ? 0 : rr < -2 ? clamp((rr + 2.6) / .6) : 1);
+      const cur = r === 0 ? 1 - shift : 0;
+      const hasEnc = L < LATENTS, hasDec = L >= 1;
+      const ran = r < 0 ? 1 : r === 0 ? 1 : 0;      // the blocks of this column have started
+      // Encoder side of step L.
+      const n = hasEnc ? n4(L) : 0;
+      if (hasEnc && r <= 0) fill(c.inp, L, r === 0 ? arrive * n : n); else c.inp.forEach(x => op(x, 0));
+      c.range.textContent = hasEnc ? rangeText(L) : '';
+      op(c.range, hasEnc && r <= 0 ? (r === 0 ? clamp(arrive * 4) : 1) : 0);
+      const encOn = hasEnc && r <= 0 ? (r === 0 ? part(f, .1, .16) : 1) : 0;
+      op(c.a1, encOn); op(c.encG, encOn);
+      if (hasEnc) fill(c.toEncCards, L, n);
+      op(c.toEnc, hasEnc && r === 0 && feed > 0 ? 1 - part(f, .34, .38) : 0);
       c.toEnc.setAttribute('transform', `translate(0 ${(ROW.enc - ROW.inp) * feed}) translate(0 ${ROW.inp}) scale(${1 - .55 * feed}) translate(0 ${-ROW.inp})`);
-      op(c.a1, encNow ? part(f, .12, .18) : 1); op(c.encG, encNow ? part(f, .12, .18) : 1);
-      // Latent: Enc of this step emits it; it waits under the encoder for the next step.
-      const latOn = encNow ? emit : 1;
+      const latOn = hasEnc && r <= 0 ? (r === 0 ? emit : 1) : 0;
       op(c.a2, latOn); op(c.latG, latOn);
       c.lat.setAttribute('transform', `translate(0 ${ROW.lat}) scale(${.4 + .6 * latOn}) translate(0 ${-ROW.lat})`);
-      // Decoder: it runs one step behind, on the latent made in the previous step.
-      const decOn = decNow ? part(f, .12, .18) : r < -1 ? 1 : 0;
-      op(c.a3, decOn); op(c.decG, decOn);
-      op(c.latCopy, decNow && feed > 0 ? 1 - part(f, .3, .34) : 0);
-      c.latCopy.setAttribute('transform', `translate(0 ${(ROW.dec - ROW.lat) * feed})`);
-      fill(c.fromDecCards, L, n);
-      op(c.fromDec, decNow ? part(f, .56, .6) * (1 - part(f, .7, .73)) : 0);
+      op(c.end, !hasEnc && r <= 0 ? 1 : 0);
+      // Decoder side of step L: latent L − 1 comes in from the previous column.
+      const decOn = hasDec && r <= 0 ? (r === 0 ? part(f, .1, .16) : 1) : 0;
+      op(c.decG, decOn);
+      op(c.linText, hasDec && r === 0 ? (1 - shift) * part(f, .1, .16) : 0);
+      // The data arrow of the oldest visible column would start off screen, so it fades out.
+      op(c.lin, decOn * (r >= 0 ? 1 : r === -1 ? 1 - shift : 0));
+      op(c.latCopy, hasDec && r === 0 && feed > 0 ? 1 - part(f, .34, .38) : 0);
+      c.latCopy.setAttribute('transform', `translate(${-DX * (1 - feed)} ${ROW.lat + (ROW.dec - 8 - ROW.lat) * feed}) scale(${1 - .4 * feed})`);
+      if (hasDec) fill(c.fromDecCards, L - 1, n4(L - 1));
+      op(c.fromDec, hasDec && r === 0 ? part(f, .56, .6) * (1 - part(f, .7, .73)) : 0);
       c.fromDec.setAttribute('transform', `translate(0 ${(ROW.dec - ROW.out) * (1 - emit)}) translate(0 ${ROW.out}) scale(${.45 + .55 * emit}) translate(0 ${-ROW.out})`);
-      const outOn = decNow ? part(f, .68, .72) : r < -1 ? 1 : 0;
+      const outOn = hasDec && r <= 0 ? (r === 0 ? part(f, .68, .72) : 1) : 0;
       op(c.a4, outOn);
-      fill(c.out, L, n);
-      c.out.forEach(x => op(x, +x.style.opacity * outOn));
-
-      // Both active blocks are outlined in purple and pulse together.
-      const encCur = encNow ? 1 - shift : 0, decCur = decNow ? 1 - shift : 0;
-      for (const [shape, cur] of [[c.enc, encCur], [c.dec, decCur]]) {
+      if (hasDec) { fill(c.out, L - 1, n4(L - 1)); c.out.forEach(x => op(x, +x.style.opacity * outOn)); }
+      else c.out.forEach(x => op(x, 0));
+      c.outRange.textContent = hasDec ? rangeText(L - 1) : '';
+      op(c.outRange, outOn);
+      // The first step has nothing to decode yet.
+      const waiting = !hasDec && r <= 0;
+      op(c.wait, waiting && r === 0 ? 1 - shift : 0); op(c.wait2, waiting && r === 0 ? 1 - shift : 0);
+      // Placeholders where nothing runs: future columns, the idle first decoder, the end of clip.
+      op(c.gIn, 1 - (hasEnc && r <= 0 ? +c.inp[c.inp.length - 1].style.opacity || (r < 0 ? 1 : 0) : 0));
+      op(c.gEnc, 1 - encOn); op(c.gLat, 1 - latOn); op(c.gDec, 1 - decOn); op(c.gOut, 1 - outOn);
+      // Both blocks of the current step are outlined in purple and pulse together.
+      for (const [shape, on] of [[c.enc, hasEnc ? cur : 0], [c.dec, hasDec ? cur : 0]]) {
         shape.setAttribute('fill', PAL.enc);
-        shape.setAttribute('stroke', mix(PAL.encLine, PAL.query, cur));
-        shape.setAttribute('stroke-width', 1.4 + .8 * cur + 1.6 * busy * cur);
+        shape.setAttribute('stroke', mix(PAL.encLine, PAL.query, on));
+        shape.setAttribute('stroke-width', 1.4 + .8 * on + 1.6 * busy * on);
       }
-      [c.a1, c.a2].forEach(a => a.setAttribute('stroke', mix(PAL.arrow, PAL.query, encCur)));
-      [c.a3, c.a4].forEach(a => a.setAttribute('stroke', mix(PAL.arrow, PAL.query, decCur)));
-
-      // Caches: the encoder of column L wrote at step L, the decoder of column L at step L + 1.
-      const caches = [[c.kvE, L, doEnc], [c.kvD, L + 1, doDec]];
-      for (const [kv, at, reads] of caches) {
-        const [u, a] = kvState(at, reads);
-        const reading = k === at + 1 && reads;
+      [c.a1, c.a2].forEach(a => a.setAttribute('stroke', mix(PAL.arrow, PAL.query, hasEnc ? cur : 0)));
+      c.a4.setAttribute('stroke', mix(PAL.arrow, PAL.query, hasDec ? cur : 0));
+      // Caches: the encoder of column L writes at step L and is read by step L + 1 if that step
+      // encodes; the decoder of column L likewise, if step L + 1 decodes.
+      const caches = [[c.kvE, hasEnc, L + 1 < LATENTS], [c.kvD, hasDec, L + 1 <= LATENTS]];
+      for (const [kv, exists, reads] of caches) {
+        const [u, a] = exists ? kvState(L, reads) : [0, 0];
+        const reading = exists && k === L + 1 && reads;
         op(kv.grp, a);
         styleKv(kv, u, reading ? hand * (1 - part(f, .3, .36)) : 0);
         op(kv.link, reading ? (1 - part(f, .7, .76)) * (1 - shift) : 0);
-        op(kv.tag, reading ? 1 - part(f, .82, .88) : 0);
+        op(kv.tag, reading ? 1 - part(f, .64, .7) : 0);
         op(kv.evict, reading ? part(f, .66, .72) * (1 - shift) : 0);
-        // A small gold token carries the cached K, V along the arrow into the block.
+        // A small gold token carries the cached K, V along the arrow into the next block.
         op(kv.token, reading && hand > 0 && hand < 1 ? 1 : 0);
         const yy = kv === c.kvE ? ROW.enc : ROW.dec;
         kv.token.setAttribute('transform', `translate(${73 + (DX - 52 - 73) * hand} ${yy})`);
       }
     });
 
-    // The band joins the encoder of step t and the decoder of step t − 1 while both run.
-    const both = doEnc && doDec;
-    const ex = X0 - shift * DX, dx = ex - DX;
-    for (const [attr, v] of [['x1', ex], ['y1', ROW.enc], ['x2', dx], ['y2', ROW.dec]]) s.band.setAttribute(attr, v);
-    s.band.style.opacity = both ? (.12 + .14 * busy) * (1 - shift) : 0;
-    s.bandText.setAttribute('x', (ex + dx) / 2 + 14);
-    s.bandText.setAttribute('y', (ROW.enc + ROW.dec) / 2 + 4);
-    s.bandText.style.opacity = both ? 1 - shift : 0;
-    s.head.textContent = (doEnc ? `encode ${rangeText(k)}` : 'end of clip') + '   ∥   ' +
-      (doDec ? `decode ${rangeText(k - 1)}` : 'nothing to decode yet');
+    s.head.textContent = 'step t:   ' + (doEnc ? `encode ${rangeText(k)}` : 'end of clip') + '   ∥   ' +
+      (doDec ? `decode latent t − 1 → ${rangeText(k - 1)}` : 'decoder waits');
     s.head.style.opacity = 1 - shift;
 
     // Players: the input shows the newest arrived frame; the output the newest decoded frame,

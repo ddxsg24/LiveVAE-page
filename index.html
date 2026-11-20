@@ -13,7 +13,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400..800&display=swap">
-<link rel="stylesheet" href="static/css/style.css?v=explain-7">
+<link rel="stylesheet" href="static/css/style.css?v=explain-8">
 </head>
 <body>
 
@@ -133,8 +133,8 @@
         <svg class="o-svg" viewBox="0 0 760 470" role="img" aria-label="Pass 1 reads the window of frame t minus 1 from the cache, pass 2 reads the window of frame t; the two outputs are merged."></svg>
         <p class="o-legend" aria-hidden="true"><span class="q">Query</span><span class="w">Window</span><span class="u">Unused or masked</span></p>
       </div>
-      <div class="step-view m-stream" data-duration="20000" data-title="Stream encoding and decoding" data-line="Encoding and decoding run in parallel: while the encoder turns chunk t into a latent, the decoder decodes latent t − 1, one step behind. Each keeps its own KV cache of one step.">
-        <svg class="o-svg stream-svg" viewBox="0 0 760 470" role="img" aria-label="Pipelined streaming on a real clip: in each step the encoder turns the newest chunk of frames into a latent while the decoder, in parallel, decodes the latent from the previous step. Each reads its own one step KV cache and writes a new one. The input stream plays as frames arrive; the LiveVAE output plays one latent behind."></svg>
+      <div class="step-view m-stream" data-duration="20000" data-title="Stream encoding and decoding" data-line="Each step encodes the newest chunk and, in parallel, decodes the previous latent. The encoder and the decoder each keep their own one step KV cache, passed along their own row.">
+        <svg class="o-svg stream-svg" viewBox="0 0 760 470" role="img" aria-label="Pipelined streaming on a real clip, one column per time step. In step t the encoder turns chunk t into latent t while the decoder, in parallel, decodes latent t − 1 from the previous step. The latent is the only link between the two rows. The encoder and the decoder each read their own one step KV cache from the previous column and write a new one. The input stream plays as frames arrive; the LiveVAE output plays one latent behind."></svg>
       </div>
     </div>
     <figcaption>Steps 1 to 3 are schematic, with 16 × 16 latents per frame. Step 4 streams the first 33 frames of a Wan2.2 reconstruction clip (480p, 50 fps) with the actual LiveVAE output; the decoder runs one latent behind the encoder.</figcaption>
@@ -218,7 +218,7 @@
   <p>Questions about LiveVAE are welcome through the issue tracker of this repository.</p>
 </footer>
 
-<script src="static/js/main.js?v=explain-7"></script>
-<script src="static/js/explainer.js?v=explain-7"></script>
+<script src="static/js/main.js?v=explain-8"></script>
+<script src="static/js/explainer.js?v=explain-8"></script>
 </body>
 </html>
