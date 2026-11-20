@@ -52,11 +52,11 @@ CLIPS = [
     ("recon_h3", "h3/urban_indoor/02_106ea626/720p", "recon_h3_cooking", "Cooking"),
     ("recon_h3", "h3/urban_indoor/01_18c07b0a/720p", "recon_h3_interior", "Interior"),
     ("recon_h3", "h3/fast_motion/01_1770b97f/720p", "recon_h3_stage", "Stage fire"),
-    # Reconstruction, Wan2.2 latent space (the game clip is 480p: its 720p files exceed the Drive download limit)
-    ("recon_wan22", "wan22/fast_motion/03_38403026/480p", "recon_wan22_game", "Game cinematic"),
-    ("recon_wan22", "wan22/people/02_162a710c/720p", "recon_wan22_library", "Library"),
-    ("recon_wan22", "wan22/nature/01_28dc5178/720p", "recon_wan22_kayak", "Ice kayak"),
+    # Reconstruction, Wan2.2 latent space (720p sources)
     ("recon_wan22", "wan22/fast_motion/01_3dfc8bd1/720p", "recon_wan22_motocross", "Motocross"),
+    ("recon_wan22", "wan22/nature/01_28dc5178/720p", "recon_wan22_kayak", "Ice kayak"),
+    ("recon_wan22", "wan22/people/02_162a710c/720p", "recon_wan22_library", "Library"),
+    ("recon_wan22", "wan22/people/01_0c58e95d/720p", "recon_wan22_workers", "Workers"),
     # Reference to video (MiniMax-H3 only; Wan2.2 has no reference generation)
     ("r2v", "gaming_01", "gaming_01", "Gaming"),
     ("r2v", "robotics_simulation_01_a", "robotics_simulation_01_a", "Robotics simulation"),
@@ -67,11 +67,9 @@ CLIPS = [
     ("r2v", "product_cinematography_01", "product_cinematography_01", "Product cinematography"),
     # Text to video (same DiT latents, only the VAE differs). Files over 10 MB were split in
     # Colab and joined again here, byte for byte.
-    ("t2v", "h3/animals/01_A_fox_is_in_front_of_a_shoe_then_the_fox", "t2v_fox", "Fox and shoe"),
-    ("t2v", "h3/fast_motion/02_A_whale_performing_a_backflip_in_the_oce", "t2v_whale", "Whale breach"),
-    ("t2v", "h3/fast_motion/01_people_are_running", "t2v_running", "City marathon"),
-    ("t2v", "h3/nature/01_The_camera_begins_as_the_first_rays_of_t", "t2v_sunrise", "Mountain sunrise"),
     ("t2v", "h3/people/01_One_person_hands_a_camera_to_another_per", "t2v_camera", "Handing over a camera"),
+    ("t2v", "h3/animals/01_A_fox_is_in_front_of_a_shoe_then_the_fox", "t2v_fox", "Fox and shoe"),
+    ("t2v", "h3/nature/01_The_camera_begins_as_the_first_rays_of_t", "t2v_sunrise", "Mountain sunrise"),
     ("t2v", "h3/animals/02_A_panda_changes_from_big_to_small", "t2v_panda", "Panda"),
     ("t2v", "h3/fine_detail/02_A_clear_glass_of_coffee_is_gently_poured", "t2v_coffee", "Coffee pour"),
 ]

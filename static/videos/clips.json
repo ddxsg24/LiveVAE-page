@@ -184,48 +184,11 @@
     ],
     "resolution": "720p"
   },
-  "recon_wan22_game": {
+  "recon_wan22_motocross": {
     "task": "recon_wan22",
     "frames": 89,
-    "fps": 29.97,
-    "seconds": 2.97,
-    "width": 1676,
-    "height": 972,
-    "grid": [
-      2,
-      2
-    ],
-    "panel": [
-      832,
-      480
-    ],
-    "gutter": 12,
-    "source_frames": [
-      89,
-      89,
-      89,
-      89
-    ],
-    "source_fps": [
-      29.97,
-      29.97,
-      29.97,
-      29.97
-    ],
-    "title": "Game cinematic",
-    "labels": [
-      "Ground truth",
-      "Wan2.2",
-      "LightVAE-Pro",
-      "LiveVAE (ours)"
-    ],
-    "resolution": "480p"
-  },
-  "recon_wan22_library": {
-    "task": "recon_wan22",
-    "frames": 89,
-    "fps": 25.0,
-    "seconds": 3.56,
+    "fps": 50.0,
+    "seconds": 1.78,
     "width": 2572,
     "height": 1452,
     "grid": [
@@ -244,12 +207,12 @@
       89
     ],
     "source_fps": [
-      25.0,
-      25.0,
-      25.0,
-      25.0
+      50.0,
+      50.0,
+      50.0,
+      50.0
     ],
-    "title": "Library",
+    "title": "Motocross",
     "labels": [
       "Ground truth",
       "Wan2.2",
@@ -295,11 +258,11 @@
     ],
     "resolution": "720p"
   },
-  "recon_wan22_motocross": {
+  "recon_wan22_library": {
     "task": "recon_wan22",
     "frames": 89,
-    "fps": 50.0,
-    "seconds": 1.78,
+    "fps": 25.0,
+    "seconds": 3.56,
     "width": 2572,
     "height": 1452,
     "grid": [
@@ -318,12 +281,49 @@
       89
     ],
     "source_fps": [
-      50.0,
-      50.0,
-      50.0,
-      50.0
+      25.0,
+      25.0,
+      25.0,
+      25.0
     ],
-    "title": "Motocross",
+    "title": "Library",
+    "labels": [
+      "Ground truth",
+      "Wan2.2",
+      "LightVAE-Pro",
+      "LiveVAE (ours)"
+    ],
+    "resolution": "720p"
+  },
+  "recon_wan22_workers": {
+    "task": "recon_wan22",
+    "frames": 89,
+    "fps": 25.0,
+    "seconds": 3.56,
+    "width": 2572,
+    "height": 1452,
+    "grid": [
+      2,
+      2
+    ],
+    "panel": [
+      1280,
+      720
+    ],
+    "gutter": 12,
+    "source_frames": [
+      89,
+      89,
+      89,
+      89
+    ],
+    "source_fps": [
+      25.0,
+      25.0,
+      25.0,
+      25.0
+    ],
+    "title": "Workers",
     "labels": [
       "Ground truth",
       "Wan2.2",
@@ -591,6 +591,40 @@
       "LiveVAE (ours)"
     ]
   },
+  "t2v_camera": {
+    "task": "t2v",
+    "frames": 124,
+    "fps": 24.0,
+    "seconds": 5.17,
+    "width": 2764,
+    "height": 768,
+    "grid": [
+      2,
+      1
+    ],
+    "panel": [
+      1376,
+      768
+    ],
+    "gutter": 12,
+    "source_frames": [
+      124,
+      124
+    ],
+    "source_fps": [
+      24.0,
+      24.0
+    ],
+    "agreement_db": {
+      "first_frame": 39.7,
+      "median": 41.8
+    },
+    "title": "Handing over a camera",
+    "labels": [
+      "MiniMax-H3",
+      "LiveVAE (ours)"
+    ]
+  },
   "t2v_fox": {
     "task": "t2v",
     "frames": 124,
@@ -625,74 +659,6 @@
       "LiveVAE (ours)"
     ]
   },
-  "t2v_whale": {
-    "task": "t2v",
-    "frames": 124,
-    "fps": 24.0,
-    "seconds": 5.17,
-    "width": 2764,
-    "height": 768,
-    "grid": [
-      2,
-      1
-    ],
-    "panel": [
-      1376,
-      768
-    ],
-    "gutter": 12,
-    "source_frames": [
-      124,
-      124
-    ],
-    "source_fps": [
-      24.0,
-      24.0
-    ],
-    "agreement_db": {
-      "first_frame": 37.4,
-      "median": 38.8
-    },
-    "title": "Whale breach",
-    "labels": [
-      "MiniMax-H3",
-      "LiveVAE (ours)"
-    ]
-  },
-  "t2v_running": {
-    "task": "t2v",
-    "frames": 124,
-    "fps": 24.0,
-    "seconds": 5.17,
-    "width": 2764,
-    "height": 768,
-    "grid": [
-      2,
-      1
-    ],
-    "panel": [
-      1376,
-      768
-    ],
-    "gutter": 12,
-    "source_frames": [
-      124,
-      124
-    ],
-    "source_fps": [
-      24.0,
-      24.0
-    ],
-    "agreement_db": {
-      "first_frame": 35.0,
-      "median": 30.2
-    },
-    "title": "City marathon",
-    "labels": [
-      "MiniMax-H3",
-      "LiveVAE (ours)"
-    ]
-  },
   "t2v_sunrise": {
     "task": "t2v",
     "frames": 124,
@@ -722,40 +688,6 @@
       "median": 41.4
     },
     "title": "Mountain sunrise",
-    "labels": [
-      "MiniMax-H3",
-      "LiveVAE (ours)"
-    ]
-  },
-  "t2v_camera": {
-    "task": "t2v",
-    "frames": 124,
-    "fps": 24.0,
-    "seconds": 5.17,
-    "width": 2764,
-    "height": 768,
-    "grid": [
-      2,
-      1
-    ],
-    "panel": [
-      1376,
-      768
-    ],
-    "gutter": 12,
-    "source_frames": [
-      124,
-      124
-    ],
-    "source_fps": [
-      24.0,
-      24.0
-    ],
-    "agreement_db": {
-      "first_frame": 39.7,
-      "median": 41.8
-    },
-    "title": "Handing over a camera",
     "labels": [
       "MiniMax-H3",
       "LiveVAE (ours)"
