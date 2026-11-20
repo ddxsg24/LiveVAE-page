@@ -13,7 +13,12 @@ const taskNotes = {
 function startGallery(clips) {
   const allView = $('all-view'), wipeView = $('wipe-view'), stage = $('compare-stage');
   const canvases = [...stage.querySelectorAll('canvas')];
-  const tabs = [...document.querySelectorAll('#results [role=tab]')];
+  // A tab whose task has no clips in the manifest stays hidden.
+  const tasks = new Set(Object.values(clips).map(c => c.task.split('_')[0]));
+  const tabs = [...document.querySelectorAll('#results [role=tab]')].filter(tab => {
+    tab.hidden = !tasks.has(tab.dataset.task);
+    return !tab.hidden;
+  });
   const modelButtons = [...document.querySelectorAll('#latent-switch button')];
   const method = $('compare-method');
   const time = $('compare-time');
@@ -223,7 +228,8 @@ function startGallery(clips) {
   } else { inView = true; loadCurrentVideo(); }
 }
 
-fetch(videoDir + 'clips.json')
+// no-cache revalidates with the server, so a manifest cached before an update is never used.
+fetch(videoDir + 'clips.json', { cache: 'no-cache' })
   .then(response => { if (!response.ok) throw Error(); return response.json(); })
   .then(startGallery)
   .catch(() => { $('example-title').textContent = 'Video examples could not be loaded.'; });
