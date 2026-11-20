@@ -260,18 +260,20 @@ button.arrow:disabled { opacity: .4; cursor: default; }
 .eff-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 28px; }
 .eff-card { margin: 0; display: grid; grid-template-rows: subgrid; grid-row: span 4; align-content: start; min-width: 0; }
 .eff-card h3 { padding: 8px 0; margin-bottom: 5px; }
-.eff-card > svg { width: 100%; min-width: 0; height: auto; display: block; aspect-ratio: 320 / 252; }
+.eff-card > svg { width: 100%; min-width: 0; height: auto; display: block; aspect-ratio: 340 / 236; overflow: visible; }
 .eff-plot .shade-label { font-size: 11px; fill: #b8322f; }
 .eff-card > figcaption { margin: 6px 0 0; font-size: 14px; line-height: 1.5; }
 .legend { list-style: none; margin: 0; padding: 0; display: grid; gap: 1px; font-size: 12px; color: var(--muted); line-height: 1.6; }
 .legend li { display: flex; align-items: center; gap: 7px; white-space: nowrap; }
 .legend .sw { flex: none; width: 24px; height: 12px; overflow: visible; }
 .eff-plot { font: 12px Inter, system-ui, sans-serif; fill: #505863; }
-.eff-plot .axis-title { font-size: 14px; fill: #282e38; font-weight: 600; }
-.eff-card .chart-key { padding: 8px 4px; }
-.key-row { display: flex; flex-wrap: wrap; gap: 2px 10px; align-content: start; font-size: 12px; color: var(--muted); line-height: 1.6; }
-.key-row span { white-space: nowrap; }
-.r480 { color: #198d83; } .r720 { color: #ce607d; } .r1080 { color: #8c71bb; } .r4k { color: #c18a2a; }
+.eff-plot .axis-title { font-size: 13px; fill: #282e38; font-weight: 600; }
+.eff-plot .x-title { font-size: 12.5px; fill: #505863; }
+.eff-plot .better { font-size: 11px; font-style: italic; fill: #2c7a66; }
+.eff-card .chart-key { padding: 8px 0 0; }
+.legend-wrap { display: flex; flex-wrap: wrap; gap: 0 12px; }
+.legend-wrap + .legend-wrap { margin-top: 2px; }
+.legend-wrap b { font-weight: 400; color: #5b6470; }
 
 /* ---------- BibTeX and footer ---------- */
 .bibtex { position: relative; }
