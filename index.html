@@ -134,32 +134,53 @@
 
 <section id="results">
   <h2>Results</h2>
-  <div class="tabs" role="tablist" data-group="results" aria-label="Result type">
-    <button type="button" role="tab" data-tab="recon">Reconstruction</button>
-    <button type="button" role="tab" data-tab="r2v">Reference to video</button>
-    <button type="button" role="tab" data-tab="t2v">Text to video</button>
+  <div class="tabs" role="tablist" aria-label="Result type">
+    <button type="button" id="tab-recon" role="tab" data-task="recon" aria-controls="result-view" aria-selected="true">Reconstruction</button>
+    <button type="button" id="tab-r2v" role="tab" data-task="r2v" aria-controls="result-view" aria-selected="false" tabindex="-1">Reference to video</button>
+    <button type="button" id="tab-t2v" role="tab" data-task="t2v" aria-controls="result-view" aria-selected="false" tabindex="-1">Text to video</button>
   </div>
-
-  <div role="tabpanel" data-group="results" data-tab="recon">
-    <p class="panel-note">Each clip is encoded and decoded at 720p by every VAE. Clips keep the frame rate of their source, so their lengths differ.</p>
-    <div class="tabs sub" role="tablist" data-group="recon" aria-label="Latent space">
-      <button type="button" role="tab" data-tab="h3">MiniMax-H3</button>
-      <button type="button" role="tab" data-tab="wan22">Wan2.2</button>
+  <div id="result-view" role="tabpanel" aria-labelledby="tab-recon">
+    <p class="panel-note" id="task-note"></p>
+    <div class="result-tools">
+      <label id="model-filter">Latent space <select id="result-model"><option value="h3">MiniMax-H3</option><option value="wan22">Wan2.2</option></select></label>
+      <label id="resolution-filter">Source resolution <select id="result-resolution"></select></label>
     </div>
-    <div role="tabpanel" data-group="recon" data-tab="h3"><div class="gallery" data-task="recon_h3"></div></div>
-    <div role="tabpanel" data-group="recon" data-tab="wan22"><div class="gallery" data-task="recon_wan22"></div></div>
+    <div class="comparison" role="region" aria-label="Video comparisons" aria-roledescription="carousel" tabindex="0">
+      <div class="example-head">
+        <div aria-live="polite" aria-atomic="true"><h3 id="example-title">Loading examples…</h3><p id="example-meta"></p></div>
+        <div class="example-nav">
+          <button type="button" class="arrow" id="previous-example" aria-label="Previous example">‹</button>
+          <span id="example-count"></span>
+          <button type="button" class="arrow" id="next-example" aria-label="Next example">›</button>
+        </div>
+      </div>
+      <div class="compare-options">
+        <label>Compare with <select id="compare-method"></select></label>
+        <label class="detail-option" hidden><input type="checkbox" id="native-detail"> Native-pixel crop</label>
+        <div class="mode-buttons" aria-label="Comparison layout">
+          <button id="mode-side" type="button" aria-pressed="true">Side by side</button>
+          <button id="mode-wipe" type="button" aria-pressed="false">Wipe</button>
+        </div>
+      </div>
+      <div class="compare-stage" id="compare-stage">
+        <figure class="view view-a"><figcaption id="left-label">Ground truth</figcaption><canvas aria-label="Comparison video"></canvas></figure>
+        <figure class="view view-b"><figcaption>LiveVAE</figcaption><canvas aria-label="LiveVAE output"></canvas></figure>
+        <div id="wipe-handle" aria-hidden="true"><span>‹ ›</span></div>
+        <input class="wipe-range" id="wipe-range" type="range" min="0" max="100" value="50" aria-label="Wipe position">
+      </div>
+      <div class="transport">
+        <button type="button" id="compare-play" aria-label="Play comparison">Play</button>
+        <input type="range" min="0" max="1" step="1" value="0" id="compare-time" aria-label="Comparison frame">
+        <output id="frame-time"></output>
+      </div>
+      <p id="media-status" role="status" hidden></p>
+      <details id="conditioning" hidden><summary>Generation inputs</summary>
+        <img id="reference-still" alt="Reference image used for this generation" hidden>
+        <p id="example-prompt"></p>
+      </details>
+    </div>
   </div>
-
-  <div role="tabpanel" data-group="results" data-tab="r2v">
-    <p class="panel-note">Reference to video generation on MiniMax-H3 from the same code rendered video and prompt, once with the official VAE and once with LiveVAE encoding the reference and decoding the result.</p>
-    <div class="gallery" data-task="r2v"></div>
-  </div>
-
-  <div role="tabpanel" data-group="results" data-tab="t2v">
-    <p class="panel-note">The same MiniMax-H3 latents decoded by the official VAE and by LiveVAE, so only the decoder differs.</p>
-    <div class="gallery" data-task="t2v"></div>
-  </div>
-  <p class="hint">Click a clip to restart it.</p>
+  <noscript>Enable JavaScript to compare the video examples.</noscript>
 </section>
 
 <section id="efficiency">
