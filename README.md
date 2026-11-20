@@ -10,8 +10,10 @@ Live site: https://ddxsg24.github.io/LiveVAE-page/
 index.html               the whole page
 static/css/style.css     styles
 static/js/main.js        result tabs built from static/videos/clips.json, lazy video playback, BibTeX copy
-static/js/streaming.js   step by step animation of streaming inference (Method section)
+static/js/explainer.js   step by step animations of the Locality and Method sections
 static/images/           paper figures (teaser, motivation, method overview, efficiency plots)
+static/images/locality/  example frame and receptive field maps used by the Locality animation
+static/explainer/        frames of a Wan2.2 clip used by the streaming step of the Method animation
 static/videos/           comparison videos, one file per clip, plus clips.json
 tools/build_videos.py    builds the comparison videos and clips.json from the result folders
 ```
@@ -45,8 +47,17 @@ Reconstruction, Reference to video and Text to video tabs. A tab with no clips i
 Pick clips by editing `CLIPS` at the top of the script.
 
 Layouts: reconstruction is a 2×2 grid of 960×540 panels (ground truth, official VAE,
-baseline, LiveVAE); reference to video is three 640×360 panels in a row (code video,
+baseline, LiveVAE); reference to video is three 640×360 panels in a row (clay render,
 MiniMax-H3, LiveVAE); text to video is two 960×536 panels. Gaps are 12 px of white.
+The page shows every panel of a clip at once, labelled from `clips.json`, or two panels
+in a wipe view. Clips not rebuilt in a run keep their existing `clips.json` entries.
+
+## Explainers
+
+`static/js/explainer.js` drives both step explainers with one player: each step is a
+`.step-view` in `index.html` (title, line and duration in its data attributes) and a
+draw function that renders the step at progress t from 0 to 1. The receptive field
+numbers in the Locality steps come from the paper's motivation figure.
 
 For generations the script prints how well the MiniMax-H3 and LiveVAE panels agree on
 frame 0 and over the clip. A reference to video clip that already disagrees on frame 0

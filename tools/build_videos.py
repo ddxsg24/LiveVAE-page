@@ -40,7 +40,7 @@ COLUMNS = {
                  ("StreamRender-H3", "StreamRender-H3"), ("Ours", "LiveVAE (ours)")],
     "recon_wan22": [("GT", "Ground truth"), ("Wan2.2_official", "Wan2.2"),
                     ("LightVAE-Pro", "LightVAE-Pro"), ("Ours", "LiveVAE (ours)")],
-    "r2v": [("code_video", "Code video"), ("MiniMax-H3", "MiniMax-H3"), ("Ours", "LiveVAE (ours)")],
+    "r2v": [("code_video", "Clay render"), ("MiniMax-H3", "MiniMax-H3"), ("Ours", "LiveVAE (ours)")],
     "t2v": [("MiniMax-H3_official", "MiniMax-H3"), ("Ours", "LiveVAE (ours)")],
 }
 
@@ -66,12 +66,11 @@ CLIPS = [
     ("r2v", "bullet_time_02", "bullet_time_02", "Bullet time"),
     ("r2v", "architectural_cinematics_01", "architectural_cinematics_01", "Architectural cinematics"),
     ("r2v", "product_cinematography_01", "product_cinematography_01", "Product cinematography"),
-    # Text to video (same DiT latents, only the VAE differs)
-    ("t2v", "h3/people/01_One_person_hands_a_camera_to_another_per", "t2v_people_01", "People"),
-    ("t2v", "h3/fast_motion/02_A_whale_performing_a_backflip_in_the_oce", "t2v_fast_motion_02", "Fast motion"),
-    ("t2v", "h3/animals/01_A_fox_is_in_front_of_a_shoe_then_the_fox", "t2v_animals_01", "Animals"),
-    ("t2v", "h3/fine_detail/02_A_clear_glass_of_coffee_is_gently_poured", "t2v_fine_detail_02", "Fine detail"),
-    ("t2v", "h3/nature/01_The_camera_begins_as_the_first_rays_of_t", "t2v_nature_01", "Nature"),
+    # Text to video (same DiT latents, only the VAE differs). The Drive connector only
+    # downloads files under 10 MB, which leaves these three prompts.
+    ("t2v", "h3/fine_detail/02_A_clear_glass_of_coffee_is_gently_poured", "t2v_fine_detail_02", "Coffee pour"),
+    ("t2v", "h3/nature/02_The_scene_opens_in_the_vast_desert_with", "t2v_nature_02", "Desert"),
+    ("t2v", "h3/fine_detail/01_A_clear_glass_of_coconut_oil_is_gently_p", "t2v_fine_detail_01", "Coconut oil pour"),
 ]
 
 # Panel size per task (width, height) and grid layout (columns, rows)
@@ -188,7 +187,11 @@ def main():
     args.out.mkdir(parents=True, exist_ok=True)
     roots = {"recon_h3": args.recon, "recon_wan22": args.recon, "r2v": args.r2v, "t2v": args.t2v}
 
-    summary = {}
+    # Keep entries of clips that are not rebuilt in this run (e.g. r2v when --r2v is omitted).
+    manifest = args.out / "clips.json"
+    summary = json.loads(manifest.read_text()) if manifest.exists() else {}
+    for entry in summary.values():
+        entry["labels"] = [label for _, label in COLUMNS[entry["task"]]]
     for task, rel, name, title in CLIPS:
         root = roots[task]
         if root is None:
@@ -197,8 +200,12 @@ def main():
         if s:
             s["title"] = title
             s["labels"] = [label for _, label in COLUMNS[task]]
+            if task.startswith("recon"):
+                s["resolution"] = Path(rel).name
             summary[name] = s
-    (args.out / "clips.json").write_text(json.dumps(summary, indent=2))
+    order = {t: i for i, t in enumerate(["recon_h3", "recon_wan22", "r2v", "t2v"])}
+    summary = dict(sorted(summary.items(), key=lambda kv: order.get(kv[1]["task"], 9)))
+    manifest.write_text(json.dumps(summary, indent=2))
 
 
 if __name__ == "__main__":
