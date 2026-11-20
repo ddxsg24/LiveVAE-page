@@ -223,6 +223,20 @@ figcaption { color: var(--muted); font-size: 15px; line-height: 1.6; }
 .stream-svg .s-ptitle.out { fill: #807dbb; }
 .stream-svg .s-count { font-size: 12.5px; fill: var(--muted); font-variant-numeric: tabular-nums; }
 .stream-svg .s-blank { fill: #f3f4f6; }
+.stream-svg .s-head { font-size: 14px; font-weight: 650; fill: #807dbb; text-anchor: middle; white-space: pre; }
+.stream-svg .s-band { stroke: #807dbb; stroke-width: 30; stroke-linecap: round; }
+.stream-svg .s-bandtext { font-size: 11.5px; font-weight: 650; fill: #807dbb; text-anchor: middle; }
+.stream-svg .s-token { fill: #fee391; stroke: #e0a800; stroke-width: 1.4; }
+.stream-svg .s-tag.kvtag { font-size: 11.5px; }
+.stream-svg .s-evict { font-size: 11px; font-style: italic; fill: #8b929d; text-anchor: middle; }
+.o-slot { fill: #fffcf0; stroke: #e0a800; stroke-width: 1.4; stroke-dasharray: 5 4; }
+.o-slot-title { font-size: 14px; font-weight: 650; fill: #8a6500; text-anchor: end; }
+.o-slot-sub { font-size: 12.5px; fill: #8b929d; text-anchor: end; }
+.o-slot-holds { font-size: 12.5px; fill: #8a6500; text-anchor: middle; }
+.o-kv rect { stroke-width: 1.4; }
+.o-kv text { font-size: 12px; font-weight: 700; text-anchor: middle; }
+.o-note.read { fill: #8a6500; font-style: normal; font-weight: 600; text-anchor: start; }
+.o-note.compute { fill: #807dbb; font-style: normal; font-weight: 600; }
 
 /* ---------- Results ---------- */
 .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0 16px; }
@@ -324,6 +338,11 @@ footer { padding-top: 44px; padding-bottom: 48px; color: var(--muted); font-size
   .stream-svg .s-tag { font-size: 20px; }
   .stream-svg .s-ptitle { font-size: 22px; }
   .stream-svg .s-count, .stream-svg .s-range { font-size: 18px; }
+  .stream-svg .s-head { font-size: 16px; }
+  .stream-svg .s-bandtext, .stream-svg .s-evict { font-size: 16px; }
+  .o-slot-title { font-size: 22px; }
+  .o-slot-sub, .o-slot-holds { font-size: 18px; }
+  .o-kv text { font-size: 16px; }
   .abstract { text-align: left; }
   .o-math { font-size: 28px; }
   .o-math.small { font-size: 24px; }

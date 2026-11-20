@@ -65,7 +65,14 @@ CLIPS = [
     ("r2v", "physical_grounding_01", "physical_grounding_01", "Physical grounding"),
     ("r2v", "architectural_cinematics_01", "architectural_cinematics_01", "Architectural cinematics"),
     ("r2v", "product_cinematography_01", "product_cinematography_01", "Product cinematography"),
-    # Text to video (same DiT latents, only the VAE differs)
+    # Text to video (same DiT latents, only the VAE differs). Files over 10 MB were split in
+    # Colab and joined again here, byte for byte.
+    ("t2v", "h3/animals/01_A_fox_is_in_front_of_a_shoe_then_the_fox", "t2v_fox", "Fox and shoe"),
+    ("t2v", "h3/fast_motion/02_A_whale_performing_a_backflip_in_the_oce", "t2v_whale", "Whale breach"),
+    ("t2v", "h3/fast_motion/01_people_are_running", "t2v_running", "City marathon"),
+    ("t2v", "h3/nature/01_The_camera_begins_as_the_first_rays_of_t", "t2v_sunrise", "Mountain sunrise"),
+    ("t2v", "h3/people/01_One_person_hands_a_camera_to_another_per", "t2v_camera", "Handing over a camera"),
+    ("t2v", "h3/animals/02_A_panda_changes_from_big_to_small", "t2v_panda", "Panda"),
     ("t2v", "h3/fine_detail/02_A_clear_glass_of_coffee_is_gently_poured", "t2v_coffee", "Coffee pour"),
 ]
 

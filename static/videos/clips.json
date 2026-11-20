@@ -591,6 +591,210 @@
       "LiveVAE (ours)"
     ]
   },
+  "t2v_fox": {
+    "task": "t2v",
+    "frames": 124,
+    "fps": 24.0,
+    "seconds": 5.17,
+    "width": 2764,
+    "height": 768,
+    "grid": [
+      2,
+      1
+    ],
+    "panel": [
+      1376,
+      768
+    ],
+    "gutter": 12,
+    "source_frames": [
+      124,
+      124
+    ],
+    "source_fps": [
+      24.0,
+      24.0
+    ],
+    "agreement_db": {
+      "first_frame": 40.1,
+      "median": 41.9
+    },
+    "title": "Fox and shoe",
+    "labels": [
+      "MiniMax-H3",
+      "LiveVAE (ours)"
+    ]
+  },
+  "t2v_whale": {
+    "task": "t2v",
+    "frames": 124,
+    "fps": 24.0,
+    "seconds": 5.17,
+    "width": 2764,
+    "height": 768,
+    "grid": [
+      2,
+      1
+    ],
+    "panel": [
+      1376,
+      768
+    ],
+    "gutter": 12,
+    "source_frames": [
+      124,
+      124
+    ],
+    "source_fps": [
+      24.0,
+      24.0
+    ],
+    "agreement_db": {
+      "first_frame": 37.4,
+      "median": 38.8
+    },
+    "title": "Whale breach",
+    "labels": [
+      "MiniMax-H3",
+      "LiveVAE (ours)"
+    ]
+  },
+  "t2v_running": {
+    "task": "t2v",
+    "frames": 124,
+    "fps": 24.0,
+    "seconds": 5.17,
+    "width": 2764,
+    "height": 768,
+    "grid": [
+      2,
+      1
+    ],
+    "panel": [
+      1376,
+      768
+    ],
+    "gutter": 12,
+    "source_frames": [
+      124,
+      124
+    ],
+    "source_fps": [
+      24.0,
+      24.0
+    ],
+    "agreement_db": {
+      "first_frame": 35.0,
+      "median": 30.2
+    },
+    "title": "City marathon",
+    "labels": [
+      "MiniMax-H3",
+      "LiveVAE (ours)"
+    ]
+  },
+  "t2v_sunrise": {
+    "task": "t2v",
+    "frames": 124,
+    "fps": 24.0,
+    "seconds": 5.17,
+    "width": 2764,
+    "height": 768,
+    "grid": [
+      2,
+      1
+    ],
+    "panel": [
+      1376,
+      768
+    ],
+    "gutter": 12,
+    "source_frames": [
+      124,
+      124
+    ],
+    "source_fps": [
+      24.0,
+      24.0
+    ],
+    "agreement_db": {
+      "first_frame": 42.4,
+      "median": 41.4
+    },
+    "title": "Mountain sunrise",
+    "labels": [
+      "MiniMax-H3",
+      "LiveVAE (ours)"
+    ]
+  },
+  "t2v_camera": {
+    "task": "t2v",
+    "frames": 124,
+    "fps": 24.0,
+    "seconds": 5.17,
+    "width": 2764,
+    "height": 768,
+    "grid": [
+      2,
+      1
+    ],
+    "panel": [
+      1376,
+      768
+    ],
+    "gutter": 12,
+    "source_frames": [
+      124,
+      124
+    ],
+    "source_fps": [
+      24.0,
+      24.0
+    ],
+    "agreement_db": {
+      "first_frame": 39.7,
+      "median": 41.8
+    },
+    "title": "Handing over a camera",
+    "labels": [
+      "MiniMax-H3",
+      "LiveVAE (ours)"
+    ]
+  },
+  "t2v_panda": {
+    "task": "t2v",
+    "frames": 124,
+    "fps": 24.0,
+    "seconds": 5.17,
+    "width": 2764,
+    "height": 768,
+    "grid": [
+      2,
+      1
+    ],
+    "panel": [
+      1376,
+      768
+    ],
+    "gutter": 12,
+    "source_frames": [
+      124,
+      124
+    ],
+    "source_fps": [
+      24.0,
+      24.0
+    ],
+    "agreement_db": {
+      "first_frame": 40.7,
+      "median": 40.4
+    },
+    "title": "Panda",
+    "labels": [
+      "MiniMax-H3",
+      "LiveVAE (ours)"
+    ]
+  },
   "t2v_coffee": {
     "task": "t2v",
     "frames": 124,
