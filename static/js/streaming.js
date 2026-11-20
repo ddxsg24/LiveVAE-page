@@ -1,4 +1,5 @@
 // Step by step animation of LiveVAE streaming inference (Method section).
+// Steps 1 to 3 are schematic; steps 4 and 5 use real frames of a Wan2.2 reconstruction clip.
 (() => {
   const root = document.getElementById('stream-explainer');
   if (!root) return;
@@ -14,11 +15,9 @@
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   const C = {
-    ink: '#3b424a', muted: '#7a828c', line: '#8a919b',
-    paper: '#ffffff', grid: '#cfd4da', ghost: '#f3f4f6', ghostLine: '#b9bec6',
-    enc: '#f6caa2', encLine: '#d98b4a', lat: '#f0a463',
-    out: '#f8cadb', outLine: '#d77aa0',
-    win: '#ffe08a', winLine: '#d4a400', query: '#7c7ac4', accent: '#b8322f',
+    line: '#8a919b', paper: '#ffffff', grid: '#cfd4da', ghost: '#f3f4f6', ghostLine: '#b9bec6',
+    enc: '#f6caa2', encLine: '#d98b4a', lat: '#f0a463', outLine: '#d77aa0',
+    win: '#ffe08a', winLine: '#d4a400', query: '#7c7ac4', queryDark: '#4d4a9c', done: '#d9d8f0',
   };
 
   const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
@@ -63,402 +62,354 @@
     return t;
   }
   const show = (node, o) => { node.style.opacity = o; };
+  const tName = (r) => (r === 0 ? 't' : r > 0 ? `t+${r}` : `t−${-r}`);
 
   el('defs', {}, svg).innerHTML = `
     <marker id="ex-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M0,1 L9,5 L0,9 z" fill="${C.line}"/></marker>
     <marker id="ex-arrow-y" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M0,1 L9,5 L0,9 z" fill="${C.winLine}"/></marker>`;
+      <path d="M0,1 L9,5 L0,9 z" fill="${C.winLine}"/></marker>
+    <marker id="ex-arrow-q" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,1 L9,5 L0,9 z" fill="${C.query}"/></marker>`;
 
-  // ---------------------------------------------------------------------------
-  // Scene 1: the streaming pipeline, one column per step, sliding left.
-  // ---------------------------------------------------------------------------
-  const pipe = el('g', { class: 'scene' }, svg);
-  const ROW = { inp: 62, enc: 152, lat: 236, dec: 318, out: 398 };
-  const COL0 = 640;
-  const DX = 180;
-  [['input', 'inp'], ['encoder', 'enc'], ['latent', 'lat'], ['decoder', 'dec'], ['output', 'out']]
-    .forEach(([s, k]) => label(s, { x: 150, y: ROW[k] + 5, 'text-anchor': 'end', class: 'lbl' }, pipe));
-
-  function stack(g, y, fill, stroke) {
-    const parts = [];
-    for (const d of [8, 4, 0]) {
-      parts.push(el('rect', { x: -32 - d, y: y - 20 - d, width: 64, height: 40, rx: 3, fill, stroke, 'stroke-width': 1.4 }, g));
-    }
-    return parts;
-  }
-  function trapezoid(g, y, wide, isEnc) {
-    const top = isEnc ? wide : 30;
-    const bot = isEnc ? 30 : wide;
-    const pts = `${-top},${y - 22} ${top},${y - 22} ${bot},${y + 22} ${-bot},${y + 22}`;
-    const shape = el('polygon', { points: pts, 'stroke-width': 1.5 }, g);
-    label(isEnc ? 'Enc' : 'Dec', { x: 0, y: y + 6, 'text-anchor': 'middle', class: 'box' }, g);
-    return shape;
-  }
-  function cube(g, y) {
-    const s = 30;
-    const grp = el('g', {}, g);
-    el('polygon', { points: `${-s / 2},${y - s / 2} ${s / 2},${y - s / 2} ${s / 2 + 8},${y - s / 2 - 8} ${-s / 2 + 8},${y - s / 2 - 8}`, fill: '#f6c49a', stroke: C.encLine }, grp);
-    el('polygon', { points: `${s / 2},${y - s / 2} ${s / 2 + 8},${y - s / 2 - 8} ${s / 2 + 8},${y + s / 2 - 8} ${s / 2},${y + s / 2}`, fill: '#e08f4f', stroke: C.encLine }, grp);
-    el('rect', { x: -s / 2, y: y - s / 2, width: s, height: s, fill: C.lat, stroke: C.encLine }, grp);
-    return grp;
-  }
-  function kvBox(g, y) {
-    const grp = el('g', { transform: `translate(72,${y})` }, g);
-    const box = el('rect', { x: -12, y: -17, width: 24, height: 34, rx: 2, 'stroke-width': 1.3 }, grp);
-    label('K', { x: 0, y: -3, 'text-anchor': 'middle', class: 'kv' }, grp);
-    label('V', { x: 0, y: 12, 'text-anchor': 'middle', class: 'kv' }, grp);
-    const arrow = el('line', { x1: 86, y1: y, x2: DX - 50, y2: y, stroke: C.winLine, 'stroke-width': 1.8, 'marker-end': 'url(#ex-arrow-y)' }, g);
-    return { grp, box, arrow };
-  }
-
-  const cols = [];
-  for (let i = 0; i < 5; i++) {
-    const g = el('g', {}, pipe);
-    const ghost = el('g', { class: 'ghost' }, g); // dashed placeholder shown before the step runs
-    stack(ghost, ROW.inp, C.ghost, C.ghostLine);
-    trapezoid(ghost, ROW.enc, 46, true);
-    el('rect', { x: -15, y: ROW.lat - 15, width: 30, height: 30, fill: C.ghost, stroke: C.ghostLine }, ghost);
-    trapezoid(ghost, ROW.dec, 46, false);
-    stack(ghost, ROW.out, C.ghost, C.ghostLine);
-    ghost.querySelectorAll('rect, polygon').forEach((n) => {
-      n.setAttribute('fill', C.ghost); n.setAttribute('stroke', C.ghostLine); n.setAttribute('stroke-dasharray', '4 3');
-    });
-
-    const inp = el('g', {}, g);
-    stack(inp, ROW.inp, C.paper, '#5b6470');
-    const a1 = el('line', { x1: 0, y1: ROW.inp + 22, x2: 0, y2: ROW.enc - 26, stroke: C.line, 'stroke-width': 1.4, 'marker-end': 'url(#ex-arrow)' }, g);
-    const encG = el('g', {}, g);
-    const enc = trapezoid(encG, ROW.enc, 46, true);
-    const a2 = el('line', { x1: 0, y1: ROW.enc + 24, x2: 0, y2: ROW.lat - 26, stroke: C.line, 'stroke-width': 1.4, 'marker-end': 'url(#ex-arrow)' }, g);
-    const lat = cube(g, ROW.lat);
-    const a3 = el('line', { x1: 0, y1: ROW.lat + 18, x2: 0, y2: ROW.dec - 26, stroke: C.line, 'stroke-width': 1.4, 'marker-end': 'url(#ex-arrow)' }, g);
-    const decG = el('g', {}, g);
-    const dec = trapezoid(decG, ROW.dec, 46, false);
-    const a4 = el('line', { x1: 0, y1: ROW.dec + 24, x2: 0, y2: ROW.out - 30, stroke: C.line, 'stroke-width': 1.4, 'marker-end': 'url(#ex-arrow)' }, g);
-    const out = el('g', {}, g);
-    stack(out, ROW.out, C.out, C.outLine);
-    const kvE = kvBox(g, ROW.enc);
-    const kvD = kvBox(g, ROW.dec);
-    const kvTag = label('KV cache', { x: 72, y: ROW.enc - 28, 'text-anchor': 'middle', class: 'tag' }, g);
-    const tLabel = label('t', { x: 0, y: 450, 'text-anchor': 'middle', class: 'tlabel' }, g);
-    cols.push({ g, ghost, inp, a1, encG, enc, a2, lat, a3, decG, dec, a4, out, kvE, kvD, kvTag, tLabel });
-  }
-
-  const tName = (r) => (r === 0 ? 't' : r > 0 ? `t+${r}` : `t−${-r}`);
-
-  function styleKv(kv, active, pulse) {
-    kv.box.setAttribute('fill', mix(C.ghost, C.win, active));
-    kv.box.setAttribute('stroke', mix(C.ghostLine, C.winLine, active));
-    kv.box.setAttribute('stroke-dasharray', active > 0.5 ? 'none' : '4 3');
-    kv.box.setAttribute('stroke-width', 1.3 + 1.4 * pulse);
-  }
-
-  function drawPipe(p) {
-    const s = 2.8 * p;              // steps processed since the start of this beat
-    const f = s - Math.floor(s);    // phase inside the current step
-    const shift = ease(seg(f, 0.86, 1));
-    const encOn = seg(f, 0.1, 0.18);
-    const encBusy = seg(f, 0.14, 0.2) * (1 - seg(f, 0.34, 0.4));
-    const latOn = seg(f, 0.38, 0.46);
-    const decOn = seg(f, 0.44, 0.5);
-    const decBusy = seg(f, 0.48, 0.54) * (1 - seg(f, 0.66, 0.72));
-    const outOn = seg(f, 0.72, 0.82);
-    const inOn = ease(seg(f, 0, 0.12));
-
-    cols.forEach((c, i) => {
-      const r = i - 3;
-      const rr = r - shift;
-      c.g.setAttribute('transform', `translate(${COL0 + rr * DX},0)`);
-      show(c.g, rr < -2 ? clamp((rr + 2.5) / 0.5) : 1);
-      c.tLabel.textContent = tName(r);
-      c.tLabel.setAttribute('class', r === 0 ? 'tlabel now' : 'tlabel');
-
-      // How far each part of this column has been computed.
-      const done = r < 0 ? 1 : 0;
-      const vIn = r === 0 ? inOn : done;
-      const vEnc = r === 0 ? encOn : done;
-      const vLat = r === 0 ? latOn : done;
-      const vDec = r === 0 ? decOn : done;
-      const vOut = r === 0 ? outOn : done;
-      show(c.inp, vIn);
-      c.inp.setAttribute('transform', `translate(0,${-26 * (1 - vIn)})`);
-      show(c.a1, vEnc); show(c.encG, vEnc); show(c.a2, vLat); show(c.lat, vLat);
-      show(c.a3, vDec); show(c.decG, vDec); show(c.a4, vOut); show(c.out, vOut);
-      show(c.ghost, r >= 0 ? 1 : 0);
-
-      const busyE = r === 0 ? encBusy : 0;
-      const busyD = r === 0 ? decBusy : 0;
-      c.enc.setAttribute('fill', C.enc);
-      c.enc.setAttribute('stroke', mix(C.encLine, C.query, busyE));
-      c.enc.setAttribute('stroke-width', 1.5 + 1.5 * busyE);
-      c.dec.setAttribute('fill', C.enc);
-      c.dec.setAttribute('stroke', mix(C.encLine, C.query, busyD));
-      c.dec.setAttribute('stroke-width', 1.5 + 1.5 * busyD);
-
-      // K/V of this step: written while it runs, read by the next step, then dropped.
-      let activeE = 0, activeD = 0, link = 0;
-      if (r === 0) { activeE = seg(f, 0.3, 0.38); activeD = seg(f, 0.62, 0.7); link = shift; }
-      if (r === -1) { activeE = 1 - shift; activeD = 1 - shift; link = 1 - shift; }
-      show(c.kvE.grp, r > 0 ? 0 : r === 0 ? activeE : 1);
-      show(c.kvD.grp, r > 0 ? 0 : r === 0 ? activeD : 1);
-      const pulseE = r === -1 ? encBusy : 0;
-      const pulseD = r === -1 ? decBusy : 0;
-      styleKv(c.kvE, activeE, pulseE);
-      styleKv(c.kvD, activeD, pulseD);
-      show(c.kvE.arrow, link);
-      show(c.kvD.arrow, link);
-      c.kvE.arrow.setAttribute('stroke-width', 1.8 + 1.6 * pulseE);
-      c.kvD.arrow.setAttribute('stroke-width', 1.8 + 1.6 * pulseD);
-      show(c.kvTag, r === -1 ? 1 - shift : r === 0 ? shift : 0);
-    });
+  // A flat token grid with a 7x7 window and a query cell, drawn at (x, y).
+  const NU = 13, NV = 9, WIN = 7;
+  function flatGrid(parent, x, y, cs, opts = {}) {
+    const g = el('g', { transform: `translate(${x},${y})` }, parent);
+    el('rect', { width: NU * cs, height: NV * cs, fill: opts.fill || C.paper, stroke: opts.stroke || '#5b6470', 'stroke-width': 1.3 }, g);
+    const cells = el('g', {}, g);
+    let d = '';
+    for (let u = 1; u < NU; u++) d += `M${u * cs},0V${NV * cs}`;
+    for (let v = 1; v < NV; v++) d += `M0,${v * cs}H${NU * cs}`;
+    el('path', { d, stroke: C.grid, 'stroke-width': 0.8, fill: 'none' }, g);
+    const win = el('rect', { width: WIN * cs, height: WIN * cs, fill: C.win, 'fill-opacity': 0.55, stroke: C.winLine, 'stroke-width': 2 }, g);
+    const q = el('rect', { width: cs, height: cs, fill: C.query, stroke: C.queryDark, 'stroke-width': 1 }, g);
+    const place = (qu, qv) => {
+      const wu = clamp(qu - 3, 0, NU - WIN);
+      const wv = clamp(qv - 3, 0, NV - WIN);
+      win.setAttribute('x', wu * cs); win.setAttribute('y', wv * cs);
+      q.setAttribute('x', qu * cs); q.setAttribute('y', qv * cs);
+    };
+    return { g, cells, win, q, place, cs, w: NU * cs, h: NV * cs };
   }
 
   // ---------------------------------------------------------------------------
-  // Scenes 2 to 4: token grids of four latent frames, the causal window,
-  // and the two attention passes that are merged into one output.
+  // Scene 1: the 2x7x7 causal window, sliding forward in time.
   // ---------------------------------------------------------------------------
-  const grids = el('g', { class: 'scene' }, svg);
-  const NU = 13, NV = 9, CS = 15, WIN = 7;
+  const slide = el('g', { class: 'scene' }, svg);
+  const CS = 15;
   const SKEW = { a: 0.85, b: -0.32 };
-  const GY = 116;
-  const frameX = { '-2': 95, '-1': 330, '0': 565, '1': 800 };
-  const proj = (r, u, v) => [frameX[r] + SKEW.a * u, GY + SKEW.b * u + v];
-  const frames = {};
-
-  for (const r of [-2, -1, 0, 1]) {
-    const outer = el('g', {}, grids);
-    const g = el('g', { transform: `matrix(${SKEW.a},${SKEW.b},0,1,${frameX[r]},${GY})` }, outer);
-    const live = r === 0 || r === -1;
-    el('rect', {
-      x: 0, y: 0, width: NU * CS, height: NV * CS, fill: live ? C.paper : C.ghost,
-      stroke: live ? '#5b6470' : C.ghostLine, 'stroke-width': 1.4, 'stroke-dasharray': live ? 'none' : '5 4',
-      'vector-effect': 'non-scaling-stroke',
-    }, g);
+  const GY = 140;
+  const fx = (r) => 330 + 235 * r;               // left edge of latent frame r (r = -1 is t-1)
+  const proj = (r, u, v) => [fx(r) + SKEW.a * u, GY + SKEW.b * u + v];
+  const persp = {};
+  for (const r of [-1, 0, 1, 2]) {
+    const outer = el('g', {}, slide);
+    const ghost = el('g', {}, outer);
+    const solid = el('g', {}, outer);
+    const m = `matrix(${SKEW.a},${SKEW.b},0,1,${fx(r)},${GY})`;
+    const gg = el('g', { transform: m }, ghost);
+    el('rect', { width: NU * CS, height: NV * CS, fill: C.ghost, stroke: C.ghostLine, 'stroke-width': 1.3, 'stroke-dasharray': '5 4', 'vector-effect': 'non-scaling-stroke' }, gg);
+    const sg = el('g', { transform: m }, solid);
+    el('rect', { width: NU * CS, height: NV * CS, fill: C.paper, stroke: '#5b6470', 'stroke-width': 1.3, 'vector-effect': 'non-scaling-stroke' }, sg);
     let d = '';
     for (let u = 1; u < NU; u++) d += `M${u * CS},0V${NV * CS}`;
     for (let v = 1; v < NV; v++) d += `M0,${v * CS}H${NU * CS}`;
-    el('path', { d, stroke: live ? C.grid : '#dde0e4', 'stroke-width': 0.8, fill: 'none', 'vector-effect': 'non-scaling-stroke' }, g);
-    const win = el('rect', { width: WIN * CS, height: WIN * CS, fill: C.win, 'fill-opacity': 0.62, stroke: C.winLine, 'stroke-width': 2, 'vector-effect': 'non-scaling-stroke' }, g);
-    const q = el('rect', { width: CS, height: CS, fill: C.query, stroke: '#4d4a9c', 'stroke-width': 1, 'vector-effect': 'non-scaling-stroke' }, g);
+    el('path', { d, stroke: C.grid, 'stroke-width': 0.8, fill: 'none', 'vector-effect': 'non-scaling-stroke' }, sg);
+    const win = el('rect', { width: WIN * CS, height: WIN * CS, fill: C.win, 'fill-opacity': 0.6, stroke: C.winLine, 'stroke-width': 2, 'vector-effect': 'non-scaling-stroke' }, sg);
+    const q = el('rect', { width: CS, height: CS, fill: C.query, stroke: C.queryDark, 'stroke-width': 1, 'vector-effect': 'non-scaling-stroke' }, sg);
     const [lx, ly] = proj(r, 0, NV * CS);
-    const name = label(tName(r), { x: lx + 4, y: ly + 24, 'text-anchor': 'start', class: r === 0 ? 'tlabel now' : 'tlabel' }, outer);
-    if (!live) { win.remove(); q.remove(); }
-    frames[r] = { outer, g, win, q, name };
+    const name = label(tName(r), { x: lx + 4, y: ly + 24, class: 'tlabel' }, outer);
+    const note = label('', { x: lx + 4, y: ly + 44, class: 'note' }, outer);
+    persp[r] = { ghost, solid, win, q, name, note };
   }
-  const notRead = label('never read', { x: proj(-2, NU * CS / 2, 0)[0], y: 40, 'text-anchor': 'middle', class: 'note' }, grids);
-  const notYet = label('not arrived yet', { x: proj(1, NU * CS / 2, 0)[0], y: 40, 'text-anchor': 'middle', class: 'note' }, grids);
-  const cacheTag = el('g', {}, grids);
-  {
-    const [x, y] = proj(-1, 0, 0);
-    el('rect', { x: x - 4, y: y - 40, width: 84, height: 24, rx: 12, fill: C.win, stroke: C.winLine }, cacheTag);
-    label('from cache', { x: x + 38, y: y - 23, 'text-anchor': 'middle', class: 'tag' }, cacheTag);
+  const bracket = el('g', {}, slide);
+  const bLine = el('path', { fill: 'none', stroke: C.winLine, 'stroke-width': 2 }, bracket);
+  const bText = label('causal window 2 × 7 × 7', { y: 36, 'text-anchor': 'middle', class: 'tag' }, bracket);
+  const slideCap = label('', { x: 500, y: 330, 'text-anchor': 'middle', class: 'lbl' }, slide);
+  const legend1 = el('g', { transform: 'translate(24,446)' }, slide);
+  el('rect', { x: 0, y: -11, width: 13, height: 13, fill: C.query }, legend1);
+  label('query', { x: 19, y: 0, class: 'lbl' }, legend1);
+  el('rect', { x: 78, y: -11, width: 13, height: 13, fill: C.win, stroke: C.winLine }, legend1);
+  label('window', { x: 97, y: 0, class: 'lbl' }, legend1);
+
+  // The query wanders a little inside each frame so the spatial window moves too.
+  const wander = [[3, 2], [5, 3], [7, 4], [9, 5], [11, 6], [12, 7]];
+
+  function drawSlide(p) {
+    // c is the index of the current latent frame: 0 (t), then 1 (t+1), then 2 (t+2).
+    const c = ease(seg(p, 0.3, 0.4)) + ease(seg(p, 0.66, 0.76));
+    const local = c < 0.5 ? seg(p, 0, 0.3) : c < 1.5 ? seg(p, 0.4, 0.66) : seg(p, 0.76, 1);
+    const [qu, qv] = wander[Math.min(wander.length - 1, Math.floor(local * wander.length))];
+    const cur = Math.round(c);
+    for (const r of [-1, 0, 1, 2]) {
+      const f = persp[r];
+      const on = clamp(1.5 - Math.abs(r - (c - 0.5)));   // part of the 2-frame window
+      const arrived = clamp(c - r + 1);
+      show(f.solid, arrived * (0.35 + 0.65 * on));
+      show(f.ghost, 1 - arrived);
+      const wu = clamp(qu - 3, 0, NU - WIN), wv = clamp(qv - 3, 0, NV - WIN);
+      f.win.setAttribute('x', wu * CS); f.win.setAttribute('y', wv * CS);
+      f.q.setAttribute('x', qu * CS); f.q.setAttribute('y', qv * CS);
+      show(f.win, on);
+      show(f.q, clamp(1 - Math.abs(r - c) * 2));
+      f.name.setAttribute('class', r === cur ? 'tlabel now' : 'tlabel');
+      f.note.textContent = r > c + 0.5 ? 'not arrived yet' : r < c - 1.5 ? 'no longer read' : '';
+    }
+    const xl = fx(c - 1) + 6;
+    const xr = fx(c) + SKEW.a * NU * CS - 6;
+    bLine.setAttribute('d', `M${xl},56 V46 H${xr} V56`);
+    bText.setAttribute('x', (xl + xr) / 2);
+    slideCap.textContent = cur === 0
+      ? 'Queries of frame t read frames t−1 and t'
+      : cur === 1 ? 'Frame t+1 arrives: the window now covers t and t+1' : 'Frame t+2 arrives: the window covers t+1 and t+2';
   }
-  const links = [0, 1, 2, 3].map(() => el('line', { stroke: C.winLine, 'stroke-width': 1.6, 'stroke-dasharray': '6 5' }, grids));
 
-  // Captions under the grids for scenes 2 and 3.
-  const cap2 = label('', { x: 500, y: 345, 'text-anchor': 'middle', class: 'big' }, grids);
-  const cap3 = el('g', {}, grids);
-  label('2 × 7 × 7 = 98 keys per query', { x: 500, y: 345, 'text-anchor': 'middle', class: 'big' }, cap3);
-  label('the same count at every resolution', { x: 500, y: 374, 'text-anchor': 'middle', class: 'lbl' }, cap3);
+  // ---------------------------------------------------------------------------
+  // Scene 2: keys and values of t-1 come from the KV cache; each query gives one output token.
+  // ---------------------------------------------------------------------------
+  const kv = el('g', { class: 'scene' }, svg);
+  el('rect', { x: 26, y: 112, width: 244, height: 196, rx: 12, fill: '#fffbea', stroke: C.winLine, 'stroke-width': 1.5, 'stroke-dasharray': '6 4' }, kv);
+  label('KV cache', { x: 40, y: 104, class: 'tag' }, kv);
+  const cacheSets = [0, 1].map((i) => {
+    const g = el('g', {}, kv);
+    const K = flatGrid(g, 40, 160, 7.6, { fill: '#fff6cc', stroke: C.winLine });
+    const V = flatGrid(g, 156, 160, 7.6, { fill: '#fff6cc', stroke: C.winLine });
+    for (const m of [K, V]) { show(m.q, 0); show(m.win, 0); }
+    const sub = i === 0 ? 't−1' : 't';
+    mathText([['K', ''], [sub, 'sub']], { x: 40 + 49, y: 254, 'text-anchor': 'middle' }, g);
+    mathText([['V', ''], [sub, 'sub']], { x: 156 + 49, y: 254, 'text-anchor': 'middle' }, g);
+    return { g, K, V };
+  });
+  const cacheNote = label('computed one step earlier', { x: 148, y: 290, 'text-anchor': 'middle', class: 'small' }, kv);
+  const ft = flatGrid(kv, 380, 136, 14);
+  label('frame t: queries, keys, values', { x: 380 + ft.w / 2, y: 124, 'text-anchor': 'middle', class: 'lbl' }, kv);
+  const ot = flatGrid(kv, 700, 136, 14);
+  show(ot.win, 0); show(ot.q, 0);
+  label('output tokens of frame t', { x: 700 + ot.w / 2, y: 124, 'text-anchor': 'middle', class: 'lbl' }, kv);
+  const outCells = [];
+  for (let v = 0; v < NV; v++) {
+    for (let u = 0; u < NU; u++) {
+      outCells.push(el('rect', { x: u * 14 + 1, y: v * 14 + 1, width: 12, height: 12, fill: C.query, rx: 1.5 }, ot.cells));
+    }
+  }
+  const camWin = el('rect', { width: WIN * 7.6, height: WIN * 7.6, fill: 'none', stroke: C.winLine, 'stroke-width': 2, 'stroke-dasharray': '4 3' }, cacheSets[0].K.g);
+  el('line', { x1: 272, y1: 210, x2: 372, y2: 210, stroke: C.winLine, 'stroke-width': 2, 'marker-end': 'url(#ex-arrow-y)' }, kv);
+  label('read', { x: 322, y: 202, 'text-anchor': 'middle', class: 'small' }, kv);
+  el('line', { x1: 568, y1: 210, x2: 692, y2: 210, stroke: C.query, 'stroke-width': 2, 'marker-end': 'url(#ex-arrow-q)' }, kv);
+  label('one output per query', { x: 630, y: 202, 'text-anchor': 'middle', class: 'small' }, kv);
+  const writeChip = el('g', {}, kv);
+  el('rect', { x: -30, y: -15, width: 60, height: 30, rx: 5, fill: C.win, stroke: C.winLine, 'stroke-width': 1.4 }, writeChip);
+  mathText([['K', ''], ['t', 'sub'], [' ', 'plain'], ['V', ''], ['t', 'sub']], { x: 0, y: 3, 'text-anchor': 'middle' }, writeChip);
+  const kvCap = label('', { x: 500, y: 400, 'text-anchor': 'middle', class: 'lbl' }, kv);
 
-  // Scene 4: two 2D attention passes and their exact merge.
-  const merge = el('g', {}, grids);
-  const B1 = { x: 413, y: 332 }, B2 = { x: 648, y: 332 }, BM = { x: 530, y: 414 };
+  function drawKv(p) {
+    const scan = seg(p, 0.04, 0.7);
+    const n = NU * NV;
+    const k = Math.min(n - 1, Math.floor(scan * n));
+    const qu = k % NU, qv = Math.floor(k / NU);
+    ft.place(qu, qv);
+    show(ft.q, p < 0.72 ? 1 : 0);
+    show(ft.win, p < 0.72 ? 1 : 0);
+    const wu = clamp(qu - 3, 0, NU - WIN), wv = clamp(qv - 3, 0, NV - WIN);
+    camWin.setAttribute('x', wu * 7.6); camWin.setAttribute('y', wv * 7.6);
+    show(camWin, p < 0.72 ? 1 : 0);
+    outCells.forEach((cell, i) => {
+      const filled = i < k || (scan >= 1);
+      cell.setAttribute('fill', i === k && scan < 1 ? C.query : C.done);
+      show(cell, filled || i === k ? 1 : 0);
+    });
+    // Frame t is done: its keys and values move into the cache and replace those of t-1.
+    const move = ease(seg(p, 0.76, 0.92));
+    writeChip.setAttribute('transform', `translate(${471 + (148 - 471) * move},${330 - 120 * move})`);
+    show(writeChip, seg(p, 0.72, 0.76) * (1 - seg(p, 0.92, 0.97)));
+    show(cacheSets[0].g, 1 - seg(p, 0.86, 0.94));
+    show(cacheSets[1].g, seg(p, 0.9, 0.98));
+    cacheNote.textContent = p < 0.88 ? 'computed one step earlier' : 'ready for frame t+1';
+    kvCap.textContent = p < 0.72
+      ? 'Each query reads its window in frame t and the same window of the cached keys and values of t−1'
+      : 'Frame t is done: its keys and values replace those of t−1 in the cache';
+  }
+
+  // ---------------------------------------------------------------------------
+  // Scene 3: the 2x7x7 attention as two 2D window attentions, merged exactly.
+  // ---------------------------------------------------------------------------
+  const pass = el('g', { class: 'scene' }, svg);
+  const gA = flatGrid(pass, 40, 64, 13, { fill: '#fff6cc', stroke: C.winLine });
+  const gB = flatGrid(pass, 40, 268, 13);
+  gA.place(6, 4); gB.place(6, 4);
+  gA.q.setAttribute('fill', 'none'); gA.q.setAttribute('stroke-dasharray', '3 2');
+  label('keys and values of t−1, from the cache', { x: 40, y: 54, class: 'lbl' }, pass);
+  label('keys and values of t', { x: 40, y: 258, class: 'lbl' }, pass);
   function roundBox(x, y, w, h, fill, stroke, parent) {
     return el('rect', { x: x - w / 2, y: y - h / 2, width: w, height: h, rx: 8, fill, stroke, 'stroke-width': 1.4 }, parent);
   }
-  roundBox(B1.x, B1.y, 150, 40, '#fffaf0', C.winLine, merge);
-  mathText([['O', ''], ['prev', 'sub'], [' ,  ', 'plain'], ['L', ''], ['prev', 'sub']], { x: B1.x, y: B1.y + 5, 'text-anchor': 'middle' }, merge);
-  roundBox(B2.x, B2.y, 150, 40, '#fffaf0', C.winLine, merge);
-  mathText([['O', ''], ['cur', 'sub'], [' ,  ', 'plain'], ['L', ''], ['cur', 'sub']], { x: B2.x, y: B2.y + 5, 'text-anchor': 'middle' }, merge);
-  label('pass 1', { x: B1.x - 88, y: B1.y + 5, 'text-anchor': 'end', class: 'lbl' }, merge);
-  label('pass 2', { x: B2.x + 88, y: B2.y + 5, 'text-anchor': 'start', class: 'lbl' }, merge);
-  const mBox = roundBox(BM.x, BM.y, 300, 52, '#f4f3fb', C.query, merge);
-  mathText([['O', ''], [' = ', 'plain'], ['α', ''], ['prev', 'sub'], ['O', ''], ['prev', 'sub'], [' + ', 'plain'], ['α', ''], ['cur', 'sub'], ['O', ''], ['cur', 'sub']], { x: BM.x, y: BM.y - 2, 'text-anchor': 'middle' }, merge);
-  label('weights: softmax of the two log normalizers L', { x: BM.x, y: BM.y + 18, 'text-anchor': 'middle', class: 'small' }, merge);
-  label('exactly one softmax over both frames', { x: BM.x + 168, y: BM.y + 5, 'text-anchor': 'start', class: 'note strong' }, merge);
-
-  const winBottom = (r) => {
-    const [u, v] = [6 * CS - 3 * CS + WIN * CS / 2, 4 * CS - 3 * CS + WIN * CS];
-    return proj(r, u, v);
-  };
+  const P1 = { x: 430, y: 122 }, P2 = { x: 430, y: 326 }, PM = { x: 760, y: 224 };
+  roundBox(P1.x, P1.y, 230, 62, '#fffaf0', C.winLine, pass);
+  label('pass 1: 2D window attention', { x: P1.x, y: P1.y - 8, 'text-anchor': 'middle', class: 'lbl' }, pass);
+  mathText([['O', ''], ['prev', 'sub'], [' ,  ', 'plain'], ['L', ''], ['prev', 'sub']], { x: P1.x, y: P1.y + 18, 'text-anchor': 'middle' }, pass);
+  roundBox(P2.x, P2.y, 230, 62, '#fffaf0', C.winLine, pass);
+  label('pass 2: 2D window attention', { x: P2.x, y: P2.y - 8, 'text-anchor': 'middle', class: 'lbl' }, pass);
+  mathText([['O', ''], ['cur', 'sub'], [' ,  ', 'plain'], ['L', ''], ['cur', 'sub']], { x: P2.x, y: P2.y + 18, 'text-anchor': 'middle' }, pass);
+  const mBox = roundBox(PM.x, PM.y, 300, 70, '#f4f3fb', C.query, pass);
+  mathText([['O', ''], [' = ', 'plain'], ['α', ''], ['prev', 'sub'], ['O', ''], ['prev', 'sub'], [' + ', 'plain'], ['α', ''], ['cur', 'sub'], ['O', ''], ['cur', 'sub']], { x: PM.x, y: PM.y - 4, 'text-anchor': 'middle' }, pass);
+  mathText([['[α', ''], ['prev', 'sub'], [', α', ''], ['cur', 'sub'], ['] = softmax([', 'plain'], ['L', ''], ['prev', 'sub'], [', ', 'plain'], ['L', ''], ['cur', 'sub'], ['])', 'plain']], { x: PM.x, y: PM.y + 22, 'text-anchor': 'middle', class: 'math small-math' }, pass);
+  label('exactly one softmax over all 98 keys', { x: PM.x, y: PM.y + 62, 'text-anchor': 'middle', class: 'note strong' }, pass);
+  label('L: log of each pass’s softmax normalizer', { x: PM.x, y: PM.y + 82, 'text-anchor': 'middle', class: 'small' }, pass);
   const paths = {
-    w1: el('path', { fill: 'none' }, merge), w2: el('path', { fill: 'none' }, merge),
-    m1: el('path', { fill: 'none' }, merge), m2: el('path', { fill: 'none' }, merge),
+    a: el('path', { d: `M${40 + gA.w + 8},${64 + gA.h / 2} L${P1.x - 120},${P1.y}`, fill: 'none', stroke: C.winLine, 'stroke-width': 1.6, 'marker-end': 'url(#ex-arrow-y)' }, pass),
+    b: el('path', { d: `M${40 + gB.w + 8},${268 + gB.h / 2} L${P2.x - 120},${P2.y}`, fill: 'none', stroke: C.winLine, 'stroke-width': 1.6, 'marker-end': 'url(#ex-arrow-y)' }, pass),
+    m1: el('path', { d: `M${P1.x + 116},${P1.y + 10} L${PM.x - 120},${PM.y - 36}`, fill: 'none', stroke: C.query, 'stroke-width': 1.6, 'marker-end': 'url(#ex-arrow-q)' }, pass),
+    m2: el('path', { d: `M${P2.x + 116},${P2.y - 10} L${PM.x - 120},${PM.y + 36}`, fill: 'none', stroke: C.query, 'stroke-width': 1.6, 'marker-end': 'url(#ex-arrow-q)' }, pass),
   };
-  {
-    const [x1, y1] = winBottom(-1);
-    const [x2, y2] = winBottom(0);
-    paths.w1.setAttribute('d', `M${x1},${y1 + 4} L${B1.x},${B1.y - 22}`);
-    paths.w2.setAttribute('d', `M${x2},${y2 + 4} L${B2.x},${B2.y - 22}`);
-    paths.m1.setAttribute('d', `M${B1.x + 30},${B1.y + 21} L${BM.x - 60},${BM.y - 27}`);
-    paths.m2.setAttribute('d', `M${B2.x - 30},${B2.y + 21} L${BM.x + 60},${BM.y - 27}`);
-    for (const k in paths) {
-      paths[k].setAttribute('stroke', k[0] === 'w' ? C.winLine : C.query);
-      paths[k].setAttribute('stroke-width', 1.6);
-      paths[k].setAttribute('marker-end', k[0] === 'w' ? 'url(#ex-arrow-y)' : 'url(#ex-arrow)');
-    }
-  }
-  const dots = Object.fromEntries(Object.keys(paths).map((k) => [k, el('circle', { r: 5, fill: k[0] === 'w' ? C.winLine : C.query }, merge)]));
+  const dots = Object.fromEntries(Object.keys(paths).map((k) => [k, el('circle', { r: 5, fill: k.length === 1 ? C.winLine : C.query }, pass)]));
   const placeDot = (k, t) => {
     const path = paths[k];
     const pt = path.getPointAtLength(path.getTotalLength() * t);
-    dots[k].setAttribute('cx', pt.x);
-    dots[k].setAttribute('cy', pt.y);
+    dots[k].setAttribute('cx', pt.x); dots[k].setAttribute('cy', pt.y);
     show(dots[k], t > 0 && t < 1 ? 1 : 0);
   };
 
-  // Query route for scene 2: along two rows, so the window visibly stops at the borders.
-  const route = [];
-  for (let u = 0; u < NU; u++) route.push([u, 1]);
-  for (let v = 2; v <= 6; v++) route.push([NU - 1, v]);
-  for (let u = NU - 2; u >= 0; u--) route.push([u, 6]);
-  route.push([1, 5], [2, 4], [3, 4], [4, 4], [5, 4], [6, 4]);
-
-  // Legend shared by scenes 2 to 4.
-  const legend = el('g', { transform: 'translate(24,442)' }, grids);
-  el('rect', { x: 0, y: -11, width: 13, height: 13, fill: C.query }, legend);
-  label('query', { x: 19, y: 0, class: 'lbl' }, legend);
-  el('rect', { x: 78, y: -11, width: 13, height: 13, fill: C.win, stroke: C.winLine }, legend);
-  label('window', { x: 97, y: 0, class: 'lbl' }, legend);
-
-  function placeWindow(fr, qu, qv) {
-    const wu = clamp(qu - 3, 0, NU - WIN);
-    const wv = clamp(qv - 3, 0, NV - WIN);
-    fr.win.setAttribute('x', wu * CS);
-    fr.win.setAttribute('y', wv * CS);
-    fr.q.setAttribute('x', qu * CS);
-    fr.q.setAttribute('y', qv * CS);
-    return [wu, wv];
-  }
-
-  function drawGrids(beat, p) {
-    let qu = 6, qv = 4;
-    if (beat === 1) {
-      const k = Math.round(seg(p, 0.04, 0.88) * (route.length - 1));
-      [qu, qv] = route[k];
-    }
-    const [wu, wv] = placeWindow(frames[0], qu, qv);
-    placeWindow(frames[-1], qu, qv);
-    show(frames[-1].q, 0);
-
-    const prevOn = beat === 1 ? 0 : beat === 2 ? ease(seg(p, 0.05, 0.3)) : 1;
-    show(frames[-1].win, prevOn);
-    show(frames[0].outer, 1);
-    show(frames[-1].outer, beat === 1 ? 0.3 : 1);
-    show(frames[-2].outer, beat === 1 ? 0.25 : 0.55);
-    show(frames[1].outer, beat === 1 ? 0.25 : 0.45);
-    show(notRead, beat === 1 ? 0 : beat === 2 ? seg(p, 0.45, 0.6) : 0.8);
-    show(notYet, beat === 1 ? 0 : beat === 2 ? seg(p, 0.5, 0.65) : 0.8);
-    show(cacheTag, beat === 3 ? seg(p, 0, 0.12) : 0);
-
-    // Dashed links between matching window corners in frames t-1 and t.
-    const corners = [[0, 0], [WIN, 0], [0, WIN], [WIN, WIN]];
-    const linkOn = beat === 2 ? seg(p, 0.22, 0.45) : beat === 3 ? 1 : 0;
-    corners.forEach(([du, dv], i) => {
-      const [x1, y1] = proj(-1, (wu + du) * CS, (wv + dv) * CS);
-      const [x2, y2] = proj(0, (wu + du) * CS, (wv + dv) * CS);
-      const line = links[i];
-      line.setAttribute('x1', x1); line.setAttribute('y1', y1);
-      line.setAttribute('x2', x1 + (x2 - x1) * linkOn); line.setAttribute('y2', y1 + (y2 - y1) * linkOn);
-      show(line, linkOn > 0 ? (beat === 3 ? 0.45 : 1) : 0);
-    });
-
-    cap2.textContent = '7 × 7 = 49 keys in the current frame';
-    show(cap2, beat === 1 ? seg(p, 0.1, 0.25) : 0);
-    show(cap3, beat === 2 ? seg(p, 0.55, 0.75) : 0);
-
-    show(merge, beat === 3 ? 1 : 0);
-    if (beat === 3) {
-      const t1 = seg(p, 0.08, 0.32);
-      placeDot('w1', t1); placeDot('w2', t1);
-      const t2 = seg(p, 0.42, 0.66);
-      placeDot('m1', t2); placeDot('m2', t2);
-      const glow = seg(p, 0.66, 0.74) * (1 - seg(p, 0.9, 1) * 0.6);
-      mBox.setAttribute('stroke-width', 1.4 + 2 * glow);
-      frames[0].q.setAttribute('stroke-width', 1 + 3 * glow);
-      for (const k in paths) show(paths[k], k[0] === 'w' ? Math.max(0.35, seg(p, 0, 0.1)) : Math.max(0.35, seg(p, 0.36, 0.42)));
-    } else {
-      frames[0].q.setAttribute('stroke-width', 1);
-    }
+  function drawPass(p) {
+    const t1 = seg(p, 0.06, 0.34);
+    placeDot('a', t1); placeDot('b', t1);
+    const t2 = seg(p, 0.42, 0.68);
+    placeDot('m1', t2); placeDot('m2', t2);
+    const glow = seg(p, 0.68, 0.76);
+    mBox.setAttribute('stroke-width', 1.4 + 2.2 * glow);
+    gB.q.setAttribute('stroke-width', 1 + 3 * glow);
   }
 
   // ---------------------------------------------------------------------------
-  // Scene 5: the KV cache holds one latent frame however long the stream runs.
+  // Scenes 4 and 5: encoding and decoding a real clip, one latent frame per step.
+  // Sprites hold frames 0 to 32 (7 per row, 200 x 117 pitch, 196 x 113 frames).
   // ---------------------------------------------------------------------------
-  const cache = el('g', { class: 'scene' }, svg);
-  const NOW_X = 330, TILE = 40, GAP = 62, TILE_Y = 92;
-  label('latent frames', { x: 40, y: 72, class: 'lbl' }, cache);
-  const tiles = [];
-  for (let i = 0; i < 12; i++) {
-    const g = el('g', {}, cache);
-    const rect = el('rect', { x: -TILE / 2, y: TILE_Y, width: TILE, height: TILE, rx: 3, 'stroke-width': 1.4 }, g);
-    tiles.push({ g, rect });
+  const SPRITE = { input: 'static/explainer/walk_input.jpg', output: 'static/explainer/walk_output.jpg' };
+  function frameView(parent, which, x, y, w, h) {
+    const box = el('svg', { x, y, width: w, height: h, viewBox: '0 0 194 111', preserveAspectRatio: 'none' }, parent);
+    const img = el('image', { href: SPRITE[which], width: 1568, height: 782 }, box);
+    el('rect', { x, y, width: w, height: h, fill: 'none', stroke: which === 'input' ? '#5b6470' : C.outLine, 'stroke-width': 1.2 }, parent);
+    let shown = -1;
+    return (k) => {
+      if (k === shown) return;
+      shown = k;
+      img.setAttribute('x', -((k % 7) * 200 + 1));
+      img.setAttribute('y', -(Math.floor(k / 7) * 117 + 1));
+    };
   }
-  el('line', { x1: NOW_X, y1: TILE_Y + TILE + 8, x2: NOW_X, y2: 226, stroke: C.line, 'stroke-width': 1.3, 'stroke-dasharray': '3 3' }, cache);
-  label('current step', { x: NOW_X, y: TILE_Y - 12, 'text-anchor': 'middle', class: 'tlabel now' }, cache);
-  el('rect', { x: NOW_X - 110, y: 236, width: 220, height: 74, rx: 10, fill: '#fffbea', stroke: C.winLine, 'stroke-width': 1.5, 'stroke-dasharray': '6 4' }, cache);
-  label('KV cache', { x: NOW_X - 104, y: 228, class: 'tag' }, cache);
-  function chip(parent) {
+
+  const walk = el('g', { class: 'scene' }, svg);
+  const W = { x0: 196, dx: 148, deck: 64, enc: 166, lat: 232, dec: 300, out: 380, cw: 116, ch: 67 };
+  [['video', W.deck], ['encoder', W.enc], ['latent', W.lat], ['decoder', W.dec], ['LiveVAE output', W.out]]
+    .forEach(([s, y]) => label(s, { x: 118, y: y + 5, 'text-anchor': 'end', class: 'lbl' }, walk));
+  const chunkFrames = (k) => (k === 0 ? [0] : [4 * k - 3, 4 * k - 2, 4 * k - 1, 4 * k]);
+
+  function trap(parent, x, y, isEnc) {
+    const top = isEnc ? 34 : 22, bot = isEnc ? 22 : 34;
+    const shape = el('polygon', { points: `${x - top},${y - 17} ${x + top},${y - 17} ${x + bot},${y + 17} ${x - bot},${y + 17}`, fill: C.enc, stroke: C.encLine, 'stroke-width': 1.5 }, parent);
+    label(isEnc ? 'Enc' : 'Dec', { x, y: y + 5, 'text-anchor': 'middle', class: 'box' }, parent);
+    return shape;
+  }
+  function deck(parent, which, x, y, frames) {
     const g = el('g', {}, parent);
-    el('rect', { x: -26, y: -17, width: 52, height: 34, rx: 4, fill: C.win, stroke: C.winLine, 'stroke-width': 1.4 }, g);
-    label('K  V', { x: 0, y: 5, 'text-anchor': 'middle', class: 'kv' }, g);
-    return g;
+    const n = frames.length;
+    const sets = [];
+    for (let j = 0; j < n; j++) {
+      const d = (n - 1 - j) * 4;
+      sets.push(frameView(g, which, x - W.cw / 2 - d, y - W.ch / 2 - d, W.cw, W.ch));
+      sets[j](frames[j]);
+    }
+    return { g, top: sets[n - 1], frames };
   }
-  const chipOld = chip(cache);
-  const chipNew = chip(cache);
-  const dropped = label('dropped', { x: NOW_X - 150, y: 304, 'text-anchor': 'middle', class: 'note' }, cache);
 
-  // Schematic chart: cache size against stream length.
-  const CH = { x0: 620, x1: 950, y0: 360, yTop: 80, flat: 318 };
-  el('line', { x1: CH.x0, y1: CH.yTop, x2: CH.x0, y2: CH.y0, stroke: C.line, 'stroke-width': 1.3 }, cache);
-  el('line', { x1: CH.x0, y1: CH.y0, x2: CH.x1 + 10, y2: CH.y0, stroke: C.line, 'stroke-width': 1.3 }, cache);
-  label('KV cache size', { x: CH.x0 - 14, y: (CH.yTop + CH.y0) / 2, 'text-anchor': 'middle', class: 'lbl', transform: `rotate(-90 ${CH.x0 - 14} ${(CH.yTop + CH.y0) / 2})` }, cache);
-  label('latent frames streamed', { x: (CH.x0 + CH.x1) / 2, y: CH.y0 + 30, 'text-anchor': 'middle', class: 'lbl' }, cache);
-  const grow = el('polyline', { fill: 'none', stroke: '#9aa1aa', 'stroke-width': 2.2, 'stroke-dasharray': '7 5' }, cache);
-  const flat = el('polyline', { fill: 'none', stroke: C.accent, 'stroke-width': 3 }, cache);
-  const growDot = el('circle', { r: 4.5, fill: '#9aa1aa' }, cache);
-  const flatDot = el('circle', { r: 5, fill: C.accent }, cache);
-  const growLbl = label('caching every past frame', { x: CH.x1 - 6, y: CH.yTop + 8, 'text-anchor': 'end', class: 'lbl' }, cache);
-  const flatLbl = label('LiveVAE: one latent frame', { x: CH.x1 - 6, y: CH.flat - 14, 'text-anchor': 'end', class: 'lbl strong' }, cache);
+  const cols = [];
+  for (let k = 0; k < 6; k++) {
+    const x = W.x0 + k * W.dx;
+    const fr = chunkFrames(k);
+    const inDeck = deck(walk, 'input', x, W.deck, fr);
+    const inLbl = label(k === 0 ? 'frame 0' : `frames ${fr[0]}–${fr[3]}`, { x, y: W.deck + W.ch / 2 + 16, 'text-anchor': 'middle', class: 'small' }, walk);
+    const a1 = el('line', { x1: x, y1: W.deck + W.ch / 2 + 22, x2: x, y2: W.enc - 20, stroke: C.line, 'stroke-width': 1.3, 'marker-end': 'url(#ex-arrow)' }, walk);
+    const enc = trap(walk, x, W.enc, true);
+    const a2 = el('line', { x1: x, y1: W.enc + 19, x2: x, y2: W.lat - 16, stroke: C.line, 'stroke-width': 1.3, 'marker-end': 'url(#ex-arrow)' }, walk);
+    const lat = el('g', {}, walk);
+    for (let i = 0; i < 4; i++) for (let j = 0; j < 3; j++) {
+      el('rect', { x: x - 20 + i * 10, y: W.lat - 15 + j * 10, width: 10, height: 10, fill: C.lat, stroke: C.encLine, 'stroke-width': 0.8 }, lat);
+    }
+    mathText([['z', ''], [String(k), 'sub']], { x: x + 28, y: W.lat + 6 }, lat);
+    const a3 = el('line', { x1: x, y1: W.lat + 17, x2: x, y2: W.dec - 20, stroke: C.line, 'stroke-width': 1.3, 'marker-end': 'url(#ex-arrow)' }, walk);
+    const dec = trap(walk, x, W.dec, false);
+    const a4 = el('line', { x1: x, y1: W.dec + 19, x2: x, y2: W.out - W.ch / 2 - 12, stroke: C.line, 'stroke-width': 1.3, 'marker-end': 'url(#ex-arrow)' }, walk);
+    const outDeck = deck(walk, 'output', x, W.out, fr);
+    // KV chips handed from step k-1 to step k
+    const kvE = el('g', { transform: `translate(${x - W.dx / 2},${W.enc})` }, walk);
+    const kvD = el('g', { transform: `translate(${x - W.dx / 2},${W.dec})` }, walk);
+    for (const g of [kvE, kvD]) {
+      el('rect', { x: -14, y: -11, width: 28, height: 22, rx: 3, fill: C.win, stroke: C.winLine, 'stroke-width': 1.2 }, g);
+      label('KV', { x: 0, y: 4, 'text-anchor': 'middle', class: 'kv' }, g);
+      el('line', { x1: 15, y1: 0, x2: 34, y2: 0, stroke: C.winLine, 'stroke-width': 1.6, 'marker-end': 'url(#ex-arrow-y)' }, g);
+    }
+    if (k === 0) { kvE.remove(); kvD.remove(); }
+    cols.push({ x, inDeck, inLbl, a1, enc, a2, lat, a3, dec, a4, outDeck, kvE, kvD });
+  }
+  label('KV cache', { x: W.x0 + W.dx / 2, y: W.enc - 24, 'text-anchor': 'middle', class: 'tag' }, walk);
 
-  function drawCache(p) {
-    const s = 4.6 * p + 2;          // stream position, in steps
-    const k = Math.floor(s);
-    const f = s - k;
-    const slide = ease(seg(f, 0.8, 1));
-    tiles.forEach((t, i) => {
-      const idx = k - 5 + i;        // absolute frame index of this tile
-      const x = NOW_X + (idx - k - slide) * GAP;
-      t.g.setAttribute('transform', `translate(${x},0)`);
-      show(t.g, clamp((x - 20) / 50) * clamp((600 - x) / 60));
-      const state = idx < k ? 'done' : idx === k ? 'now' : 'next';
-      t.rect.setAttribute('fill', state === 'next' ? C.ghost : C.lat);
-      t.rect.setAttribute('fill-opacity', state === 'done' ? 0.45 : 1);
-      t.rect.setAttribute('stroke', state === 'now' ? C.query : state === 'next' ? C.ghostLine : C.encLine);
-      t.rect.setAttribute('stroke-width', state === 'now' ? 3 : 1.4);
-      t.rect.setAttribute('stroke-dasharray', state === 'next' ? '4 3' : 'none');
+  // Side by side playback at the end of step 5.
+  const player = el('g', {}, walk);
+  el('rect', { x: 0, y: 0, width: 1000, height: 460, fill: '#ffffff', 'fill-opacity': 0.94 }, player);
+  const pIn = frameView(player, 'input', 150, 110, 330, 190);
+  const pOut = frameView(player, 'output', 520, 110, 330, 190);
+  label('input video', { x: 315, y: 96, 'text-anchor': 'middle', class: 'lbl' }, player);
+  label('LiveVAE output', { x: 685, y: 96, 'text-anchor': 'middle', class: 'lbl strong' }, player);
+  const pCap = label('', { x: 500, y: 334, 'text-anchor': 'middle', class: 'small' }, player);
+
+  // phase: 'enc' runs the encoder over the six steps, 'dec' runs the decoder.
+  function drawWalk(phase, p, ms) {
+    const steps = 6;
+    const s = phase === 'enc' ? steps * seg(p, 0.02, 0.92) : steps * seg(p, 0.02, 0.7);
+    const k0 = Math.min(steps - 1, Math.floor(s));
+    const f = s >= steps ? 1 : s - k0;
+    cols.forEach((c, k) => {
+      const encDone = phase === 'dec' || k < k0 || (k === k0 && f >= 1);
+      const active = s < steps && k === k0;
+      // Encoder side
+      const inArrived = phase === 'dec' || k <= k0;
+      show(c.inDeck.g, inArrived ? 1 : 0.25);
+      show(c.inLbl, inArrived ? 1 : 0.4);
+      const encOn = phase === 'enc' && active ? seg(f, 0.05, 0.7) : 0;
+      const latOn = encDone || (phase === 'enc' && active) ? (phase === 'enc' && active ? seg(f, 0.68, 0.85) : 1) : 0;
+      c.enc.setAttribute('stroke', mix(C.encLine, C.query, phase === 'enc' && active ? seg(f, 0.05, 0.15) * (1 - seg(f, 0.65, 0.75)) : 0));
+      c.enc.setAttribute('stroke-width', phase === 'enc' && active ? 3 : 1.5);
+      show(c.a1, inArrived ? 1 : 0.25);
+      show(c.a2, latOn);
+      show(c.lat, latOn);
+      // The deck flips through its frames while the encoder reads them.
+      const fr = c.inDeck.frames;
+      if (phase === 'enc' && active && f < 0.7) c.inDeck.top(fr[Math.min(fr.length - 1, Math.floor(seg(f, 0.05, 0.65) * fr.length))]);
+      else c.inDeck.top(fr[fr.length - 1]);
+      // Decoder side
+      const decDone = phase === 'dec' && (k < k0 || (k === k0 && f >= 1) || s >= steps);
+      const decActive = phase === 'dec' && active;
+      c.dec.setAttribute('stroke', mix(C.encLine, C.query, decActive ? seg(f, 0.05, 0.15) * (1 - seg(f, 0.65, 0.75)) : 0));
+      c.dec.setAttribute('stroke-width', decActive ? 3 : 1.5);
+      const outOn = decDone ? 1 : decActive ? seg(f, 0.3, 0.45) : 0;
+      show(c.outDeck.g, outOn);
+      show(c.a3, phase === 'dec' ? (decDone || decActive ? 1 : 0.3) : 0.3);
+      show(c.a4, outOn);
+      if (decActive && f < 0.9) c.outDeck.top(fr[Math.min(fr.length - 1, Math.floor(seg(f, 0.3, 0.85) * fr.length))]);
+      else c.outDeck.top(fr[fr.length - 1]);
+      // KV handed over from the previous step while this step runs
+      const kvActive = k > 0 && active ? 1 : 0;
+      const kvDoneE = k > 0 && (phase === 'dec' || k <= k0) ? 1 : 0;
+      show(c.kvE, phase === 'enc' ? (kvActive ? 1 : kvDoneE * 0.35) : 0.35);
+      show(c.kvD, phase === 'dec' ? (kvActive ? 1 : (k > 0 && (k <= k0 || s >= steps) ? 0.35 : 0)) : 0);
     });
-
-    // The finished step writes its K/V into the cache and pushes the older entry out.
-    const fall = ease(seg(f, 0.5, 0.78));
-    const out = ease(seg(f, 0.5, 0.78));
-    chipNew.setAttribute('transform', `translate(${NOW_X},${TILE_Y + TILE / 2 + (273 - TILE_Y - TILE / 2) * fall})`);
-    show(chipNew, seg(f, 0.4, 0.5));
-    chipOld.setAttribute('transform', `translate(${NOW_X - 150 * out},273)`);
-    show(chipOld, 1 - seg(f, 0.6, 0.85));
-    show(dropped, seg(f, 0.58, 0.68) * (1 - seg(f, 0.88, 1)));
-
-    const u = seg(p, 0.04, 0.96);
-    const xHead = CH.x0 + (CH.x1 - CH.x0) * u;
-    const yGrow = CH.flat - (CH.flat - CH.yTop - 20) * u;
-    flat.setAttribute('points', `${CH.x0},${CH.flat} ${xHead},${CH.flat}`);
-    grow.setAttribute('points', `${CH.x0},${CH.flat} ${xHead},${yGrow}`);
-    flatDot.setAttribute('cx', xHead); flatDot.setAttribute('cy', CH.flat);
-    growDot.setAttribute('cx', xHead); growDot.setAttribute('cy', yGrow);
-    show(flatLbl, seg(p, 0.55, 0.7));
-    show(growLbl, seg(p, 0.75, 0.9));
+    const pOn = phase === 'dec' ? seg(p, 0.74, 0.8) : 0;
+    show(player, pOn);
+    if (pOn > 0) {
+      const idx = Math.floor(ms / 40) % 33;     // 25 fps, half the clip's 50 fps
+      pIn(idx); pOut(idx);
+      pCap.textContent = `frame ${idx} of 0–32 · played at half speed`;
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -474,12 +425,15 @@
 
   function draw() {
     const p = playing ? clamp(elapsed / durations[beat]) : (elapsed > 0 ? clamp(elapsed / durations[beat]) : 1);
-    show(pipe, beat === 0 ? 1 : 0);
-    show(grids, beat >= 1 && beat <= 3 ? 1 : 0);
-    show(cache, beat === 4 ? 1 : 0);
-    if (beat === 0) drawPipe(p);
-    if (beat >= 1 && beat <= 3) drawGrids(beat, p);
-    if (beat === 4) drawCache(p);
+    show(slide, beat === 0 ? 1 : 0);
+    show(kv, beat === 1 ? 1 : 0);
+    show(pass, beat === 2 ? 1 : 0);
+    show(walk, beat >= 3 ? 1 : 0);
+    if (beat === 0) drawSlide(p);
+    if (beat === 1) drawKv(p);
+    if (beat === 2) drawPass(p);
+    if (beat === 3) drawWalk('enc', p, elapsed);
+    if (beat === 4) drawWalk('dec', p, playing ? elapsed : 16 * 40);
     fills.forEach((fi, i) => { fi.style.transform = `scaleX(${i < beat ? 1 : i === beat ? p : 0})`; });
   }
 
@@ -496,9 +450,7 @@
     const dt = Math.min(now - last, 100);
     last = now;
     elapsed += dt;
-    if (elapsed >= durations[beat]) {
-      setBeat(beat + 1);
-    }
+    if (elapsed >= durations[beat]) setBeat(beat + 1);
     draw();
     raf = playing ? requestAnimationFrame(frame) : 0;
   }
