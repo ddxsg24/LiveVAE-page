@@ -273,7 +273,7 @@ button.arrow:disabled { opacity: .4; cursor: default; }
 .eff-card .chart-key { padding: 8px 0 0; }
 .legend-wrap { display: flex; flex-wrap: wrap; gap: 0 12px; }
 .legend-wrap + .legend-wrap { margin-top: 2px; }
-.legend-wrap b { font-weight: 400; color: #5b6470; }
+.legend .sw-dot { width: 12px; height: 12px; }
 
 /* ---------- BibTeX and footer ---------- */
 .bibtex { position: relative; }

@@ -81,7 +81,7 @@ def svg(label, body):
 
 
 def chart_windows():
-    xmin, xmax, ymin, ymax = -0.25, 0.17, -2.5, 25.5
+    xmin, xmax, ymin, ymax = -0.25, 0.17, -5, 25.5
     xm = lambda v: X0 + (v - xmin) / (xmax - xmin) * (X1 - X0)
     ym = lambda v: YB - (v - ymin) / (ymax - ymin) * (YB - YT)
     body = [f'<rect x="{f(xm(0))}" y="{f(ym(0))}" width="{f(X1 - xm(0))}" height="{f(YB - ym(0))}" fill="#e6f2ee"/>',
@@ -142,11 +142,13 @@ def legend(items):
 
 
 def section():
+    dot = lambda shape, color: (f'<svg class="sw sw-dot" viewBox="0 0 12 12" aria-hidden="true">'
+                                f'{marker(shape, 6, 6, color, r=3.6)}</svg>')
     key_a = ('<ul class="legend legend-wrap">'
-             + "".join(f'<li><b style="color:{c}">●</b>{r}</li>' for r, c in RES_COLOR.items())
+             + "".join(f"<li>{dot('circle', c)}{r}</li>" for r, c in RES_COLOR.items())
              + '</ul><ul class="legend legend-wrap">'
-             + "".join(f"<li><b>{s}</b>{w}</li>" for w, s in (("2×3×3", "●"), ("2×16×16", "■"), ("3×7×7", "▲"), ("4×7×7", "◆")))
-             + "<li><b>★</b>2×7×7 (default)</li></ul>")
+             + "".join(f"<li>{dot(SHAPE[w], '#5b6470')}{w}</li>" for w in WINDOWS)
+             + f"<li>{dot('star', '#2b3240')}2×7×7 (default)</li></ul>")
     key_b = legend([(swatch(BASE, dashed=True), "LiveVAE")] + [(swatch(c, s), n) for n, c, s, _ in SPEEDUP])
     key_c = legend([(swatch(BASE, dashed=True), "LiveVAE"), (swatch(DARK, "diamond"), PSNR[0][0]),
                     (swatch(DARK, "diamond", dashed=True, hollow=True), PSNR[1][0])])
