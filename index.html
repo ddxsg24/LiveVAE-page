@@ -86,25 +86,25 @@
     <div class="ex-head">
       <button type="button" class="ex-nav ex-prev" aria-label="Previous step"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button>
       <div class="ex-words" aria-live="polite">
-        <div class="ex-beat" data-dur="8.5">
-          <p class="ex-title"><span class="ex-n">1</span>Process each chunk as it arrives</p>
-          <p class="ex-line">Every step encodes a new chunk of frames into one latent frame and decodes it right away. The only thing carried to the next step is the keys and values of this one.</p>
+        <div class="ex-beat" data-dur="10">
+          <p class="ex-title"><span class="ex-n">1</span>Causal window attention</p>
+          <p class="ex-line">A query in latent frame <i>t</i> attends to the 7&times;7 window around it in frame <i>t</i> and to the same window in frame <i>t</i>&minus;1. When the next latent frame arrives, this 2&times;7&times;7 window slides one step forward in time.</p>
         </div>
-        <div class="ex-beat" data-dur="7">
-          <p class="ex-title"><span class="ex-n">2</span>Attend to a local window</p>
-          <p class="ex-line">Inside a latent frame, each query token attends only to the 7&times;7 tokens around it. Near the border the window stays inside the frame, so it always holds 49 tokens.</p>
-        </div>
-        <div class="ex-beat" data-dur="6.5">
-          <p class="ex-title"><span class="ex-n">3</span>Look one step back</p>
-          <p class="ex-line">The window also covers the same region of the previous latent frame, a 2&times;7&times;7 window of 98 keys per query at any resolution. Older frames are never read.</p>
-        </div>
-        <div class="ex-beat" data-dur="7">
-          <p class="ex-title"><span class="ex-n">4</span>Two 2D passes, merged exactly</p>
-          <p class="ex-line">The query attends to the cached keys and values of frame <i>t</i>&minus;1 and to those of frame <i>t</i> in two passes. Weighting the two outputs by a softmax over their log normalizers equals one softmax over both frames.</p>
+        <div class="ex-beat" data-dur="9">
+          <p class="ex-title"><span class="ex-n">2</span>The KV cache and the output</p>
+          <p class="ex-line">Frame <i>t</i>&minus;1 was processed one step earlier, so its keys and values are read from the KV cache instead of being recomputed. Each query yields one output token; once frame <i>t</i> is done, its keys and values replace the cached ones.</p>
         </div>
         <div class="ex-beat" data-dur="8">
-          <p class="ex-title"><span class="ex-n">5</span>A cache that never grows</p>
-          <p class="ex-line">After each step the new keys and values replace the old ones, so the cache always holds one latent frame. Memory and compute per step stay flat however long the stream runs.</p>
+          <p class="ex-title"><span class="ex-n">3</span>Two 2D attention passes</p>
+          <p class="ex-line">The 2&times;7&times;7 window is computed as two 2D window attentions with the same queries: one over the cached keys of frame <i>t</i>&minus;1 and one over frame <i>t</i>. Weighting the two outputs by a softmax over their log normalizers gives exactly the full attention.</p>
+        </div>
+        <div class="ex-beat" data-dur="9">
+          <p class="ex-title"><span class="ex-n">4</span>Encoding a real clip</p>
+          <p class="ex-line">The encoder reads the video one step at a time: frame 0 alone, then four frames per step. Each step becomes one latent frame, and the cache hands the previous step&rsquo;s keys and values to the next.</p>
+        </div>
+        <div class="ex-beat" data-dur="11">
+          <p class="ex-title"><span class="ex-n">5</span>Decoding it back</p>
+          <p class="ex-line">The decoder turns each latent frame back into its video frames as soon as it arrives, reading only the cache of the previous step. The clip then plays next to the LiveVAE output.</p>
         </div>
       </div>
       <button type="button" class="ex-nav ex-next" aria-label="Next step"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg></button>
@@ -115,15 +115,15 @@
     <div class="ex-controls">
       <button type="button" class="ex-play" aria-label="Play"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="i-play" d="M8 5v14l11-7z"/><path class="i-pause" d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg></button>
       <div class="ex-bar">
-        <button type="button" class="ex-seg" style="--w:8.5" aria-label="Step 1"><i></i></button>
-        <button type="button" class="ex-seg" style="--w:7" aria-label="Step 2"><i></i></button>
-        <button type="button" class="ex-seg" style="--w:6.5" aria-label="Step 3"><i></i></button>
-        <button type="button" class="ex-seg" style="--w:7" aria-label="Step 4"><i></i></button>
-        <button type="button" class="ex-seg" style="--w:8" aria-label="Step 5"><i></i></button>
+        <button type="button" class="ex-seg" style="--w:10" aria-label="Step 1"><i></i></button>
+        <button type="button" class="ex-seg" style="--w:9" aria-label="Step 2"><i></i></button>
+        <button type="button" class="ex-seg" style="--w:8" aria-label="Step 3"><i></i></button>
+        <button type="button" class="ex-seg" style="--w:9" aria-label="Step 4"><i></i></button>
+        <button type="button" class="ex-seg" style="--w:11" aria-label="Step 5"><i></i></button>
       </div>
       <span class="ex-count">1 / 5</span>
     </div>
-    <figcaption><b>Streaming inference with causal window attention.</b> A schematic: grid sizes are illustrative, and the chart in step 5 shows trends only. Use the arrows or the progress bar to move between steps.</figcaption>
+    <figcaption><b>Streaming inference with causal window attention.</b> Steps 1 to 3 are schematic, with illustrative grid sizes. Steps 4 and 5 use the first 33 frames of a Wan2.2 reconstruction clip (480p, 50 fps) and the actual LiveVAE output for them. Use the arrows or the progress bar to move between steps.</figcaption>
   </figure>
 
   <figure class="wide">
