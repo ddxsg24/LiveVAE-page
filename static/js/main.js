@@ -246,3 +246,81 @@ document.querySelectorAll('.copy').forEach((button) => {
     setTimeout(() => { button.textContent = 'Copy'; }, 1600);
   });
 });
+
+// Speed comparison, from Table 1 of the paper. Each entry gives [encoder ms, decoder ms, PSNR]
+// at 480p, 720p, 1080p and 2160p. Encoder null: the method keeps the official encoder.
+// null for a whole resolution: out of memory.
+const speedData = {
+  h3: [
+    { name: 'MiniMax-H3', kind: 'official', r: [[623.0, 435.3, 32.99], [1453.5, 1010.6, 34.31], [3107.5, 2152.0, 35.86], [11465.1, 8026.2, 38.68]] },
+    { name: 'TAEH3', kind: 'both', r: [[7.6, 9.4, 27.59], [15.4, 20.3, 28.72], [32.7, 44.8, 29.99], [134.4, 176.5, 32.28]] },
+    { name: 'LightVAE-Lite', kind: 'both', r: [[339.4, 146.9, 29.71], [789.5, 341.3, 31.05], [1691.8, 730.4, 32.54], [6254.1, 2715.8, 35.39]] },
+    { name: 'LynnReal-Omni', kind: 'dec', r: [[null, 285.7, 33.16], [null, 659.5, 34.43], [null, 1398.1, 35.94], [null, 5231.7, 38.77]] },
+    { name: 'Solar-X', kind: 'dec', r: [[null, 273.5, 31.62], [null, 619.7, 32.93], [null, 1332.6, 34.46], null] },
+    { name: 'StreamRender-H3', kind: 'dec', r: [[null, 331.4, 31.86], [null, 647.0, 33.13], [null, 1323.9, 34.75], [null, 4805.5, 37.57]] },
+    { name: 'LiveVAE', kind: 'ours', r: [[119.5, 146.0, 33.06], [234.3, 303.4, 34.74], [514.2, 660.2, 36.76], [1856.0, 2445.0, 39.05]] },
+    { name: 'LiveVAE-Opt', kind: 'ours', r: [[78.6, 78.6, 33.06], [92.5, 126.7, 34.74], [165.9, 225.9, 36.63], [656.7, 912.2, 39.07]] },
+  ],
+  wan22: [
+    { name: 'Wan2.2', kind: 'official', r: [[175.0, 560.3, 36.08], [382.8, 1264.2, 37.66], [842.3, 2812.4, 39.55], [3463.5, 13446.6, 42.69]] },
+    { name: 'TAEW2.2', kind: 'both', r: [[14.4, 16.9, 30.10], [17.9, 22.8, 31.49], [32.5, 42.3, 33.11], [116.2, 154.3, 36.11]] },
+    { name: 'TAEW2.2-Super', kind: 'both', r: [[12.1, 22.0, 31.49], [18.0, 46.8, 32.89], [32.7, 102.8, 34.55], [116.3, 399.4, 37.62]] },
+    { name: 'LightTAE', kind: 'both', r: [[14.3, 16.7, 27.93], [18.4, 23.2, 28.88], [32.5, 42.3, 29.91], [116.6, 154.7, 31.72]] },
+    { name: 'LightVAE-Lite', kind: 'dec', r: [[null, 196.1, 32.64], [null, 438.5, 34.28], [null, 985.5, 36.23], [null, 4724.9, 39.97]] },
+    { name: 'LightVAE-Pro', kind: 'dec', r: [[null, 358.0, 35.30], [null, 786.2, 36.91], [null, 1743.8, 38.82], [null, 8351.0, 42.25]] },
+    { name: 'Turbo-VAED', kind: 'dec', r: [[null, 306.1, 32.79], [null, 708.7, 34.37], [null, 1734.9, 36.24], [null, 8269.8, 39.56]] },
+    { name: 'LiveVAE', kind: 'ours', r: [[124.9, 119.5, 34.46], [261.5, 254.9, 36.24], [569.7, 552.4, 38.40], [2127.6, 2066.0, 42.24]] },
+  ],
+};
+
+(function speedChart() {
+  const root = $('speed-chart');
+  if (!root) return;
+  const rowsBox = $('speed-rows'), axis = root.querySelector('.speed-axis');
+  const state = { model: 'h3', res: 1, part: 'e2e' };
+  const maxLog = 2; // the bar axis runs from 1x to 100x on a log scale
+  const ticks = [1, 2, 5, 10, 20, 50, 100];
+  const at = (v) => Math.min(100, Math.max(0, Math.log10(v) / maxLog * 100));
+  const kindLabel = { official: 'Official', both: 'Encoder + decoder', dec: 'Decoder only', ours: 'Encoder + decoder' };
+  const ms = (v) => v >= 1000 ? (v / 1000).toFixed(2) + ' s' : v.toFixed(v < 100 ? 1 : 0) + ' ms';
+  axis.innerHTML = '<span></span><span></span><span class="sp-ticks">'
+    + ticks.map(t => `<span class="${[2, 20, 50].includes(t) ? 'minor' : ''}" style="left:${at(t)}%">${t}&times;</span>`).join('') + '</span>';
+  // Faint vertical lines at the ticks, drawn behind every bar.
+  root.style.setProperty('--grid', ticks.map(t =>
+    `linear-gradient(90deg, transparent calc(${at(t)}% - .5px), #e3e6ea calc(${at(t)}% - .5px), #e3e6ea calc(${at(t)}% + .5px), transparent calc(${at(t)}% + .5px))`).join(','));
+
+  function draw() {
+    const rows = speedData[state.model];
+    const [oe, od, op] = rows[0].r[state.res];
+    rowsBox.innerHTML = rows.map(row => {
+      const cell = row.r[state.res];
+      const name = `<span class="sp-name">${row.name}</span><span class="sp-kind">${kindLabel[row.kind]}</span>`;
+      if (!cell) return `<div class="sp-row ${row.kind}" role="row">${name}<span class="sp-bar"><em>Out of memory</em></span><span></span><span></span></div>`;
+      const enc = cell[0] ?? oe, dec = cell[1];
+      const time = { e2e: enc + dec, enc, dec }[state.part];
+      const base = { e2e: oe + od, enc: oe, dec: od }[state.part];
+      const x = base / time;
+      const keepsOfficial = row.kind === 'dec' && state.part === 'enc';
+      const bar = row.kind === 'official'
+        ? '<span class="sp-bar"><b class="ref">1&times; reference</b></span>'
+        : keepsOfficial
+          ? '<span class="sp-bar"><em>Official encoder</em></span>'
+          : `<span class="sp-bar"><i style="width:${at(x)}%"></i><b class="${at(x) > 72 ? 'inside' : ''}" style="left:${at(x)}%">${x.toFixed(1)}&times;</b></span>`;
+      const d = cell[2] - op;
+      const psnr = row.kind === 'official' ? `<span class="sp-psnr ref">${op.toFixed(2)} dB</span>`
+        : `<span class="sp-psnr ${d >= 0 ? 'up' : 'down'}">${d >= 0 ? '+' : '&minus;'}${Math.abs(d).toFixed(2)} dB</span>`;
+      return `<div class="sp-row ${row.kind}" role="row">${name}${bar}<span class="sp-time">${ms(time)}</span>${psnr}</div>`;
+    }).join('');
+  }
+
+  root.querySelectorAll('.switch').forEach(group => {
+    group.addEventListener('click', (e) => {
+      const button = e.target.closest('button');
+      if (!button) return;
+      group.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b === button));
+      state[group.dataset.key] = group.dataset.key === 'res' ? +button.dataset.value : button.dataset.value;
+      draw();
+    });
+  });
+  draw();
+})();
