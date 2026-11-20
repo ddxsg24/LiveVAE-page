@@ -10,7 +10,7 @@
 <meta property="og:type" content="website">
 <meta property="og:image" content="static/images/og_image.jpg">
 <meta name="twitter:card" content="summary_large_image">
-<link rel="stylesheet" href="static/css/style.css">
+<link rel="stylesheet" href="static/css/style.css?v=method4-2">
 </head>
 <body>
 
@@ -52,11 +52,11 @@
 <main>
 
 <section>
-  <figure class="wide">
-    <img src="static/images/teaser.jpg" alt="Speed and quality of LiveVAE on MiniMax-H3: PSNR against decoding and encoding FPS, zoomed reconstruction crops, and reference to video generation results with the H3 VAE and LiveVAE." width="2400" height="1392">
-    <figcaption><b>Speed and quality on MiniMax-H3.</b> Top: LiveVAE compared with other methods in PSNR and in decoding and encoding FPS at 720p. Middle: zoomed reconstruction crops from each VAE. Bottom: reference to video results on CodeVideoBench decoded with the H3 VAE and with LiveVAE.</figcaption>
-  </figure>
-
+  <div class="teaser-panels" aria-label="MiniMax-H3 results">
+    <section class="teaser-panel"><h3><b>A</b> Speed and quality</h3><div class="teaser-pair"><svg viewBox="0 8 1196 498" width="1196" height="498" role="img" aria-label="Decoding FPS and PSNR at 720p" preserveAspectRatio="xMidYMid meet" overflow="hidden"><image href="static/images/teaser.jpg" width="2400" height="1392"/></svg><svg viewBox="1203 8 1197 498" width="1197" height="498" role="img" aria-label="Encoding FPS and PSNR at 720p" preserveAspectRatio="xMidYMid meet" overflow="hidden"><image href="static/images/teaser.jpg" width="2400" height="1392"/></svg></div></section>
+    <section class="teaser-panel"><h3><b>B</b> Reconstruction</h3><div class="teaser-strips"><svg viewBox="44 521 2355 264" width="2355" height="264" role="img" aria-label="Cup reconstruction, ground truth and VAE outputs" preserveAspectRatio="xMidYMid meet" overflow="hidden"><image href="static/images/teaser.jpg" width="2400" height="1392"/></svg><svg viewBox="44 789 2355 264" width="2355" height="264" role="img" aria-label="Fence reconstruction, ground truth and VAE outputs" preserveAspectRatio="xMidYMid meet" overflow="hidden"><image href="static/images/teaser.jpg" width="2400" height="1392"/></svg></div></section>
+    <section class="teaser-panel"><h3><b>C</b> Reference to Video</h3><svg viewBox="44 1057 2355 332" width="2355" height="332" role="img" aria-label="Reference image, code video, H3 generation and LiveVAE generation" preserveAspectRatio="xMidYMid meet" overflow="hidden"><image href="static/images/teaser.jpg" width="2400" height="1392"/></svg></section>
+  </div>
   <ul class="stats">
     <li><strong>5.2&ndash;6.2&times;</strong><span>faster encoding than the official MiniMax-H3 VAE</span></li>
     <li><strong>3.0&ndash;3.3&times;</strong><span>faster decoding, with higher PSNR</span></li>
@@ -66,78 +66,94 @@
 
 <section>
   <h2>Abstract</h2>
-  <p class="abstract">While video diffusion models have grown faster and increasingly streamable, the video VAE remains a primary latency bottleneck across interactive generation and editing pipelines. Existing VAEs and their acceleration methods rely mainly on heavy convolutions or full frame attention, and most focus only on decoding, leaving encoding costly for streaming conditional generation and editing. This raises a natural question: <em>Do video VAE encoding and decoding actually require such global spatiotemporal modeling?</em> By analyzing the effective receptive fields of pretrained video VAEs, we find that <em>both encoding and decoding a patch rely almost entirely on its spatial and temporal neighbors</em>. To exploit this strong locality, we introduce LiveVAE, a streaming encoder and decoder built on causal window attention, which cuts per frame compute while keeping the temporal KV cache bounded for streaming. Decoupled encoder/decoder distillation followed by joint finetuning preserves the pretrained latent space, making LiveVAE a drop-in replacement for the original VAE. On MiniMax-H3, LiveVAE achieves 5.2&ndash;6.2&times; faster encoding and 3.0&ndash;3.3&times; faster decoding than the official VAE with higher PSNR. Paired with our dedicated inference infrastructure, LiveVAE pushes the speedup to 13.4&times; with almost no quality loss. Code and models will be released.</p>
+  <p class="section-lede">LiveVAE uses local attention to stream video in the pretrained latent space.</p>
+  <details class="paper-details"><summary>Read the abstract</summary><p class="abstract">While video diffusion models have grown faster and increasingly streamable, the video VAE remains a primary latency bottleneck across interactive generation and editing pipelines. Existing VAEs and their acceleration methods rely mainly on heavy convolutions or full frame attention, and most focus only on decoding, leaving encoding costly for streaming conditional generation and editing. This raises a natural question: <em>Do video VAE encoding and decoding actually require such global spatiotemporal modeling?</em> By analyzing the effective receptive fields of pretrained video VAEs, we find that <em>both encoding and decoding a patch rely almost entirely on its spatial and temporal neighbors</em>. To exploit this strong locality, we introduce LiveVAE, a streaming encoder and decoder built on causal window attention, which cuts per frame compute while keeping the temporal KV cache bounded for streaming. Decoupled encoder/decoder distillation followed by joint finetuning preserves the pretrained latent space, making LiveVAE a drop-in replacement for the original VAE. On MiniMax-H3, LiveVAE achieves 5.2&ndash;6.2&times; faster encoding and 3.0&ndash;3.3&times; faster decoding than the official VAE with higher PSNR. Paired with our dedicated inference infrastructure, LiveVAE pushes the speedup to 13.4&times; with almost no quality loss. Code and models will be released.</p></details>
 </section>
 
 <section>
   <h2>Locality in Pretrained Video VAEs</h2>
-  <p>We measure the effective receptive field of the encoders and decoders of MiniMax-H3 and Wan2.2. For both, the output at a patch depends almost entirely on its spatial and temporal neighbors: a 7&times;7 spatial window already covers 95&ndash;100% of the influence, and two frames cover 71&ndash;99%. Global attention over the whole frame is therefore not needed for encoding or decoding.</p>
+  <p class="section-lede">A 7 × 7 window captures 95–100% of the influence. Two frames capture 71–99%.</p>
   <figure>
     <img src="static/images/motivation.png" alt="Effective receptive field maps of the H3 and Wan2.2 encoders and decoders, and the share of influence covered by spatial and temporal windows of increasing size." width="1600" height="844" loading="lazy">
-    <figcaption><b>Effective receptive field analysis of pretrained VAEs.</b> (a) Influence maps for one query patch. (b) Share of influence inside spatial windows of growing size. (c) Share of influence inside temporal windows of growing length.</figcaption>
+    <figcaption>Effective receptive fields of MiniMax-H3 and Wan2.2 encoders and decoders.</figcaption>
   </figure>
 </section>
 
-<section>
+<section id="method">
   <h2>Method</h2>
-  <p>LiveVAE replaces the convolutional encoder and decoder with stacks of causal window attention blocks. Each token attends only to a small spatial window in the current frame and the previous frame, so the cost per frame stays fixed and the KV cache stays bounded during streaming. Training is a three stage progressive distillation from the pretrained VAE: the streaming encoder is distilled to match the pretrained latents, the streaming decoder is distilled on those latents, and both are then finetuned jointly. Because the latent space is preserved, LiveVAE works with existing diffusion models without retraining them.</p>
-
-  <figure class="explainer" id="stream-explainer" aria-label="Streaming inference with causal window attention, step by step.">
-    <div class="ex-head">
-      <button type="button" class="ex-nav ex-prev" aria-label="Previous step"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button>
-      <div class="ex-words" aria-live="polite">
-        <div class="ex-beat" data-dur="10">
-          <p class="ex-title"><span class="ex-n">1</span>Causal window attention</p>
-          <p class="ex-line">Each query attends to a 7&times;7 neighborhood in the current and previous latent frames. The window advances with each new frame.</p>
-        </div>
-        <div class="ex-beat" data-dur="9">
-          <p class="ex-title"><span class="ex-n">2</span>The KV cache and the output</p>
-          <p class="ex-line">Reuse the previous frame’s keys and values. After each query returns one token, cache the current frame for the next step.</p>
-        </div>
-        <div class="ex-beat" data-dur="8">
-          <p class="ex-title"><span class="ex-n">3</span>Two 2D attention passes</p>
-          <p class="ex-line">Run the same query on each frame’s 7&times;7 window. A softmax over the two log normalizers merges the outputs exactly.</p>
-        </div>
-        <div class="ex-beat" data-dur="9">
-          <p class="ex-title"><span class="ex-n">4</span>Encoding a real clip</p>
-          <p class="ex-line">Frame 0 yields the first latent. Each group of four more frames yields another. Decoding starts as soon as the first latent arrives.</p>
-        </div>
-        <div class="ex-beat" data-dur="11">
-          <p class="ex-title"><span class="ex-n">5</span>Decoding as frames arrive</p>
-          <p class="ex-line">The decoder reconstructs each available chunk while the encoder reads the next. Each stage carries its own KV cache forward.</p>
-        </div>
-      </div>
-      <button type="button" class="ex-nav ex-next" aria-label="Next step"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg></button>
+  <p class="method-intro">A two-frame attention window keeps the KV cache bounded in both the encoder and decoder.</p>
+  <div class="method-demo" aria-label="LiveVAE method walkthrough">
+    <div class="method-tabs" role="tablist" aria-label="Method steps">
+      <button type="button" role="tab" id="m-tab-1" aria-controls="m-step-1" aria-selected="true"><span>1</span> Window</button>
+      <button type="button" role="tab" id="m-tab-2" aria-controls="m-step-2" aria-selected="false" tabindex="-1"><span>2</span> KV cache</button>
+      <button type="button" role="tab" id="m-tab-3" aria-controls="m-step-3" aria-selected="false" tabindex="-1"><span>3</span> Two 2D passes</button>
+      <button type="button" role="tab" id="m-tab-4" aria-controls="m-step-4" aria-selected="false" tabindex="-1"><span>4</span> Streaming</button>
     </div>
-    <div class="ex-stage-wrap">
-      <svg class="ex-stage" viewBox="0 0 1000 460" role="img" aria-label="Animated schematic of streaming encoding and decoding with causal window attention"></svg>
+    <div class="method-content">
+      <section class="method-panel" id="m-step-1" role="tabpanel" aria-labelledby="m-tab-1">
+        <h3>Causal window attention</h3>
+        <p>One query reads a 7 × 7 window in each of two frames.</p>
+        <svg id="window-diagram" class="attention-diagram" viewBox="0 0 760 210" role="img" aria-label="The query moves forward with a matching spatial window in the previous and current frames."></svg>
+      </section>
+      <section class="method-panel" id="m-step-2" role="tabpanel" aria-labelledby="m-tab-2" hidden>
+        <h3>Reuse the previous frame</h3>
+        <p>Read cached keys and values. Cache the current pair for the next step.</p>
+        <svg id="cache-diagram" class="attention-diagram" viewBox="0 0 760 210" role="img" aria-label="Cached keys and values join the current query, keys and values to produce the output."></svg>
+      </section>
+      <section class="method-panel" id="m-step-3" role="tabpanel" aria-labelledby="m-tab-3" hidden>
+        <h3>Two windows, one attention output</h3>
+        <div class="pass-layout">
+          <div class="pass-pair">
+            <div><span>Previous frame</span><svg class="pass-grid" viewBox="0 0 110 110" aria-hidden="true"></svg><i>i = t − 1</i></div>
+            <div><span>Current frame</span><svg class="pass-grid" viewBox="0 0 110 110" aria-hidden="true"></svg><i>i = t</i></div>
+          </div>
+          <div class="pass-equations">
+            <div><h4>Per-window attention</h4>
+              <math display="block" aria-label="s i equals q K i transpose over square root of d"><msub><mi>s</mi><mi>i</mi></msub><mo>=</mo><mfrac><mrow><mi>q</mi><msubsup><mi>K</mi><mi>i</mi><mi mathvariant="normal">T</mi></msubsup></mrow><msqrt><mi>d</mi></msqrt></mfrac></math>
+              <math display="block" aria-label="o i equals softmax of s i times V i"><msub><mi>o</mi><mi>i</mi></msub><mo>=</mo><mi mathvariant="normal">softmax</mi><mo>(</mo><msub><mi>s</mi><mi>i</mi></msub><mo>)</mo><msub><mi>V</mi><mi>i</mi></msub></math>
+            </div>
+            <div><h4>Exact merge</h4>
+              <math display="block" aria-label="l i is log sum exp of the scores for window i"><msub><mi>ℓ</mi><mi>i</mi></msub><mo>=</mo><mi mathvariant="normal">logsumexp</mi><mo>(</mo><msub><mi>s</mi><mi>i</mi></msub><mo>)</mo></math>
+              <math display="block" aria-label="w equals softmax over the two window log normalizers"><mi>w</mi><mo>=</mo><mi mathvariant="normal">softmax</mi><mo>(</mo><msub><mi>ℓ</mi><mrow><mi>t</mi><mo>−</mo><mn>1</mn></mrow></msub><mo>,</mo><msub><mi>ℓ</mi><mi>t</mi></msub><mo>)</mo></math>
+              <math display="block" aria-label="o equals the weighted sum of the two 2D outputs"><mi>o</mi><mo>=</mo><msub><mi>w</mi><mrow><mi>t</mi><mo>−</mo><mn>1</mn></mrow></msub><msub><mi>o</mi><mrow><mi>t</mi><mo>−</mo><mn>1</mn></mrow></msub><mo>+</mo><msub><mi>w</mi><mi>t</mi></msub><msub><mi>o</mi><mi>t</mi></msub></math>
+            </div>
+          </div>
+        </div>
+      </section>
+      <section class="method-panel" id="m-step-4" role="tabpanel" aria-labelledby="m-tab-4" hidden>
+        <h3>Stream a real clip</h3>
+        <p>Decode the available latent while encoding the next four frames.</p>
+        <div class="stream-flow">
+          <div class="flow-node frame-node"><span>Input</span><canvas id="stream-input" width="194" height="111" aria-label="Incoming video frames"></canvas><strong id="input-range">Frame 0</strong></div>
+          <div class="flow-op encoder"><strong>Encoder</strong><span id="encode-state">Encoding</span></div>
+          <div class="flow-node latent-node"><span>New latent</span><b id="new-latent">—</b></div>
+          <div class="flow-node latent-node"><span>Available latent</span><b id="decode-latent">—</b></div>
+          <div class="flow-op decoder"><strong>Decoder</strong><span id="decode-state">Waiting</span></div>
+          <div class="flow-node frame-node"><span>LiveVAE output</span><canvas id="stream-output" width="194" height="111" aria-label="Reconstructed video frames"></canvas><strong id="output-range">Waiting</strong></div>
+        </div>
+        <div class="chunk-controls">
+          <small>Wan2.2 · 480p · 50 fps</small>
+          <button type="button" id="chunk-prev" aria-label="Previous streaming tick">‹</button>
+          <output id="chunk-index">1 / 10</output>
+          <button type="button" id="chunk-next" aria-label="Next streaming tick">›</button>
+        </div>
+      </section>
     </div>
-    <div class="ex-controls">
-      <button type="button" class="ex-play" aria-label="Play"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="i-play" d="M8 5v14l11-7z"/><path class="i-pause" d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg></button>
-      <div class="ex-bar">
-        <button type="button" class="ex-seg" style="--w:10" aria-label="Step 1"><i></i></button>
-        <button type="button" class="ex-seg" style="--w:9" aria-label="Step 2"><i></i></button>
-        <button type="button" class="ex-seg" style="--w:8" aria-label="Step 3"><i></i></button>
-        <button type="button" class="ex-seg" style="--w:9" aria-label="Step 4"><i></i></button>
-        <button type="button" class="ex-seg" style="--w:11" aria-label="Step 5"><i></i></button>
-      </div>
-      <span class="ex-count">1 / 5</span>
+    <div class="method-transport">
+      <button type="button" id="method-play" aria-label="Play method animation">Play</button>
+      <input type="range" id="method-progress" min="0" max="1000" value="0" aria-label="Method animation position">
+      <button type="button" id="method-prev" aria-label="Previous method step">‹</button><button type="button" id="method-next" aria-label="Next method step">›</button>
     </div>
-    <figcaption><b>Streaming inference with causal window attention.</b> Steps 1 to 3 are schematic, with illustrative grid sizes. Steps 4 and 5 follow the first 33 frames of a 480p, 50 fps Wan2.2 clip and its LiveVAE reconstruction. Timing is slowed to show when each chunk becomes available. Use the arrows or the progress bar to move between steps.</figcaption>
-  </figure>
-
-  <figure class="wide">
-    <img src="static/images/method_overview.png" alt="Overview of LiveVAE: streaming encoder and decoder architecture, causal window attention, three stage progressive distillation, and streaming inference with a bounded KV cache." width="2400" height="1782" loading="lazy">
-    <figcaption><b>Overview of LiveVAE.</b> (a) Encoder and decoder architecture. (b) Causal window attention. (c) Three stage progressive distillation. (d) Streaming inference with a bounded KV cache.</figcaption>
-  </figure>
+  </div>
+  <details class="method-training"><summary>Architecture and training</summary><p>Distill the encoder and decoder separately, then fine-tune them jointly in the pretrained latent space.</p><img src="static/images/method_overview.png" width="2400" height="1782" loading="lazy" alt="Architecture, causal attention, distillation and streaming inference."></details>
 </section>
 
 <section id="results">
   <h2>Results</h2>
   <div class="tabs" role="tablist" aria-label="Result type">
     <button type="button" id="tab-recon" role="tab" data-task="recon" aria-controls="result-view" aria-selected="true">Reconstruction</button>
-    <button type="button" id="tab-r2v" role="tab" data-task="r2v" aria-controls="result-view" aria-selected="false" tabindex="-1">Reference to video</button>
-    <button type="button" id="tab-t2v" role="tab" data-task="t2v" aria-controls="result-view" aria-selected="false" tabindex="-1">Text to video</button>
+    <button type="button" id="tab-r2v" role="tab" data-task="r2v" aria-controls="result-view" aria-selected="false" tabindex="-1">Reference to Video</button>
+    <button type="button" id="tab-t2v" role="tab" data-task="t2v" aria-controls="result-view" aria-selected="false" tabindex="-1">Text to Video</button>
   </div>
   <div id="result-view" role="tabpanel" aria-labelledby="tab-recon">
     <p class="panel-note" id="task-note"></p>
@@ -183,33 +199,16 @@
   <noscript>Enable JavaScript to compare the video examples.</noscript>
 </section>
 
-<section id="efficiency">
-  <h2>Efficiency</h2>
-  <div class="chart-scroll" tabindex="0" aria-label="Efficiency figures">
-    <div class="eff-grid">
-      <figure class="eff-card">
-        <h3>Attention window tradeoff</h3>
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 252" font-family="Arial,Helvetica,sans-serif" role="img" aria-labelledby="window-title window-desc"><title id="window-title">Change in time (%)</title><desc id="window-desc">Different spatial and temporal attention windows compared to the two-frame 7 by 7 default. Color indicates source resolution.</desc><text x="43" y="21" font-size="14" text-anchor="start" fill="#2b3240" font-weight="600">Change in time (%)</text><line x1="44" y1="184.91666666666666" x2="305" y2="184.91666666666666" stroke="#e5e9ef" stroke-width="1" /><text x="36" y="188.91666666666666" font-size="12" text-anchor="end" fill="#566275">0</text><line x1="44" y1="156.77187499999997" x2="305" y2="156.77187499999997" stroke="#e5e9ef" stroke-width="1" /><text x="36" y="160.77187499999997" font-size="12" text-anchor="end" fill="#566275">5</text><line x1="44" y1="128.62708333333336" x2="305" y2="128.62708333333336" stroke="#e5e9ef" stroke-width="1" /><text x="36" y="132.62708333333336" font-size="12" text-anchor="end" fill="#566275">10</text><line x1="44" y1="100.48229166666667" x2="305" y2="100.48229166666667" stroke="#e5e9ef" stroke-width="1" /><text x="36" y="104.48229166666667" font-size="12" text-anchor="end" fill="#566275">15</text><line x1="44" y1="72.3375" x2="305" y2="72.3375" stroke="#e5e9ef" stroke-width="1" /><text x="36" y="76.3375" font-size="12" text-anchor="end" fill="#566275">20</text><line x1="44" y1="44.192708333333336" x2="305" y2="44.192708333333336" stroke="#e5e9ef" stroke-width="1" /><text x="36" y="48.192708333333336" font-size="12" text-anchor="end" fill="#566275">25</text><line x1="44" y1="38" x2="44" y2="202" stroke="#a6b0bc" stroke-width="1" /><line x1="44" y1="202" x2="305" y2="202" stroke="#a6b0bc" stroke-width="1" /><text x="75.20364741641338" y="222" font-size="12" text-anchor="middle" fill="#566275">−0.2</text><text x="137.3465045592705" y="222" font-size="12" text-anchor="middle" fill="#566275">−0.1</text><text x="199.48936170212767" y="222" font-size="12" text-anchor="middle" fill="#566275">0</text><text x="261.6322188449848" y="222" font-size="12" text-anchor="middle" fill="#566275">0.1</text><text x="175" y="246" font-size="13" text-anchor="middle" fill="#566275">Change in PSNR (dB)</text><line x1="199.48936170212767" y1="38" x2="199.48936170212767" y2="202" stroke="#8690a0" stroke-width="1" stroke-dasharray="3 3" /><line x1="44" y1="184.91666666666666" x2="305" y2="184.91666666666666" stroke="#8690a0" stroke-width="1" stroke-dasharray="3 3" /><circle cx="84.45896656534954" cy="184.0625" r="3.7" fill="#198d83" stroke="#198d83" stroke-width="1" /><circle cx="68.85714285714286" cy="186.34027777777777" r="3.7" fill="#ce607d" stroke="#ce607d" stroke-width="1" /><circle cx="81.28571428571428" cy="183.77777777777777" r="3.7" fill="#8c71bb" stroke="#8c71bb" stroke-width="1" /><circle cx="75.20364741641338" cy="184.0625" r="3.7" fill="#c18a2a" stroke="#c18a2a" stroke-width="1" /><rect x="273.5340425531915" y="160.43194444444447" width="7.4" height="7.4" fill="#198d83" stroke="#198d83" stroke-width="1" /><rect x="276.4428571428571" y="180.3625" width="7.4" height="7.4" fill="#ce607d" stroke="#ce607d" stroke-width="1" /><rect x="226.99300911854104" y="182.07083333333335" width="7.4" height="7.4" fill="#8c71bb" stroke="#8c71bb" stroke-width="1" /><rect x="133.6465045592705" y="181.21666666666667" width="7.4" height="7.4" fill="#c18a2a" stroke="#c18a2a" stroke-width="1" /><polygon points="205.57,113.88 210.27,122.28 200.87,122.28" fill="#198d83" stroke="#198d83" stroke-width="1" /><polygon points="199.49,116.15 204.19,124.55 194.79,124.55" fill="#ce607d" stroke="#ce607d" stroke-width="1" /><polygon points="208.74,109.04 213.44,117.44 204.04,117.44" fill="#8c71bb" stroke="#8c71bb" stroke-width="1" /><polygon points="187.06,111.03 191.76,119.43 182.36,119.43" fill="#c18a2a" stroke="#c18a2a" stroke-width="1" /><polygon points="264.81,52.09 269.51,56.79 264.81,61.49 260.11,56.79" fill="#198d83" stroke="#198d83" stroke-width="1" /><polygon points="258.46,60.63 263.16,65.33 258.46,70.03 253.76,65.33" fill="#ce607d" stroke="#ce607d" stroke-width="1" /><polygon points="264.81,53.23 269.51,57.93 264.81,62.63 260.11,57.93" fill="#8c71bb" stroke="#8c71bb" stroke-width="1" /><polygon points="236.78,57.22 241.48,61.92 236.78,66.62 232.08,61.92" fill="#c18a2a" stroke="#c18a2a" stroke-width="1" /><polygon points="199.49,177.72 201.17,182.60 206.34,182.69 202.21,185.80 203.72,190.74 199.49,187.78 195.26,190.74 196.77,185.80 192.64,182.69 197.81,182.60" fill="#2b3240" stroke="#2b3240" stroke-width="1" /></svg>
-        <div class="chart-key">
-          <div class="key-row"><span><b class="r480">●</b> 480p</span><span><b class="r720">●</b> 720p</span><span><b class="r1080">●</b> 1080p</span><span><b class="r4k">●</b> 2160p</span></div>
-          <div class="key-row"><span>● 2×3×3</span><span>■ 2×16×16</span><span>▲ 3×7×7</span><span>◆ 4×7×7</span><span>★ 2×7×7 (default)</span></div>
-        </div>
-        <figcaption>Changes are relative to the default 2×7×7 window. Longer temporal windows add over 11% to runtime. <a href="static/images/window_tradeoff.png">Original figure</a></figcaption>
-      </figure>
-      <figure class="eff-card infra-card">
-        <h3>Cumulative inference optimizations</h3>
-        <div class="infra-plots">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 252" font-family="Arial,Helvetica,sans-serif" role="img" aria-labelledby="speed-title speed-desc"><title id="speed-title">Speedup over LiveVAE (×)</title><desc id="speed-desc">Cumulative inference optimizations on four input resolutions.</desc><text x="43" y="21" font-size="14" text-anchor="start" fill="#2b3240" font-weight="600">Speedup over LiveVAE (×)</text><rect x="175" y="38" width="130" height="164" fill="#fcf5f2" /><line x1="44" y1="191.38129496402877" x2="305" y2="191.38129496402877" stroke="#e5e9ef" stroke-width="1" /><text x="36" y="195.38129496402877" font-size="12" text-anchor="end" fill="#566275">1×</text><line x1="44" y1="156.37889688249402" x2="305" y2="156.37889688249402" stroke="#e5e9ef" stroke-width="1" /><text x="36" y="160.37889688249402" font-size="12" text-anchor="end" fill="#566275">1.5×</text><line x1="44" y1="121.37649880095923" x2="305" y2="121.37649880095923" stroke="#e5e9ef" stroke-width="1" /><text x="36" y="125.37649880095923" font-size="12" text-anchor="end" fill="#566275">2×</text><line x1="44" y1="86.37410071942446" x2="305" y2="86.37410071942446" stroke="#e5e9ef" stroke-width="1" /><text x="36" y="90.37410071942446" font-size="12" text-anchor="end" fill="#566275">2.5×</text><line x1="44" y1="51.37170263788969" x2="305" y2="51.37170263788969" stroke="#e5e9ef" stroke-width="1" /><text x="36" y="55.37170263788969" font-size="12" text-anchor="end" fill="#566275">3×</text><line x1="44" y1="38" x2="44" y2="202" stroke="#a6b0bc" stroke-width="1" /><line x1="44" y1="202" x2="305" y2="202" stroke="#a6b0bc" stroke-width="1" /><text x="55" y="222" font-size="12" text-anchor="middle" fill="#566275">480p</text><text x="134" y="222" font-size="12" text-anchor="middle" fill="#566275">720p</text><text x="214" y="222" font-size="12" text-anchor="middle" fill="#566275">1080p</text><text x="293" y="222" font-size="12" text-anchor="middle" fill="#566275">2160p</text><text x="175" y="246" font-size="13" text-anchor="middle" fill="#566275">Resolution</text><line x1="44" y1="191.38129496402877" x2="305" y2="191.38129496402877" stroke="#8690a0" stroke-width="1.2" stroke-dasharray="4 3" /><polyline points="55,144.58 134,137.89 214,136.32 293,143.79" fill="none" stroke="#d99989" stroke-width="2.1" /><rect x="51.4" y="140.98033573141487" width="7.2" height="7.2" fill="#d99989" stroke="#d99989" stroke-width="1" /><rect x="130.4" y="134.29448441247004" width="7.2" height="7.2" fill="#d99989" stroke="#d99989" stroke-width="1" /><rect x="210.4" y="132.72134292565948" width="7.2" height="7.2" fill="#d99989" stroke="#d99989" stroke-width="1" /><rect x="289.4" y="140.1937649880096" width="7.2" height="7.2" fill="#d99989" stroke="#d99989" stroke-width="1" /><polyline points="55,143.01 134,89.52 214,89.52 293,104.07" fill="none" stroke="#c45f56" stroke-width="2.1" /><polygon points="55.00,138.41 59.60,146.61 50.40,146.61" fill="#c45f56" stroke="#c45f56" stroke-width="1" /><polygon points="134.00,84.92 138.60,93.12 129.40,93.12" fill="#c45f56" stroke="#c45f56" stroke-width="1" /><polygon points="214.00,84.92 218.60,93.12 209.40,93.12" fill="#c45f56" stroke="#c45f56" stroke-width="1" /><polygon points="293.00,99.47 297.60,107.67 288.40,107.67" fill="#c45f56" stroke="#c45f56" stroke-width="1" /><polyline points="55,189.81 134,115.48 214,51.37 293,69.46" fill="none" stroke="#952d2d" stroke-width="2.1" /><polygon points="55.00,185.21 59.60,189.81 55.00,194.41 50.40,189.81" fill="#952d2d" stroke="#952d2d" stroke-width="1" /><polygon points="134.00,110.88 138.60,115.48 134.00,120.08 129.40,115.48" fill="#952d2d" stroke="#952d2d" stroke-width="1" /><polygon points="214.00,46.77 218.60,51.37 214.00,55.97 209.40,51.37" fill="#952d2d" stroke="#952d2d" stroke-width="1" /><polygon points="293.00,64.86 297.60,69.46 293.00,74.06 288.40,69.46" fill="#952d2d" stroke="#952d2d" stroke-width="1" /></svg>
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 252" font-family="Arial,Helvetica,sans-serif" role="img" aria-labelledby="quality-title quality-desc"><title id="quality-title">Change in PSNR (dB)</title><desc id="quality-desc">Effect of quantization-aware training on reconstruction quality.</desc><text x="43" y="21" font-size="14" text-anchor="start" fill="#2b3240" font-weight="600">Change in PSNR (dB)</text><line x1="44" y1="169.52475247524754" x2="305" y2="169.52475247524754" stroke="#e5e9ef" stroke-width="1" /><text x="36" y="173.52475247524754" font-size="12" text-anchor="end" fill="#566275">-3</text><line x1="44" y1="129.25544554455445" x2="305" y2="129.25544554455445" stroke="#e5e9ef" stroke-width="1" /><text x="36" y="133.25544554455445" font-size="12" text-anchor="end" fill="#566275">-2</text><line x1="44" y1="88.98613861386139" x2="305" y2="88.98613861386139" stroke="#e5e9ef" stroke-width="1" /><text x="36" y="92.98613861386139" font-size="12" text-anchor="end" fill="#566275">-1</text><line x1="44" y1="48.716831683168316" x2="305" y2="48.716831683168316" stroke="#e5e9ef" stroke-width="1" /><text x="36" y="52.716831683168316" font-size="12" text-anchor="end" fill="#566275">0</text><line x1="44" y1="38" x2="44" y2="202" stroke="#a6b0bc" stroke-width="1" /><line x1="44" y1="202" x2="305" y2="202" stroke="#a6b0bc" stroke-width="1" /><text x="55" y="222" font-size="12" text-anchor="middle" fill="#566275">480p</text><text x="134" y="222" font-size="12" text-anchor="middle" fill="#566275">720p</text><text x="214" y="222" font-size="12" text-anchor="middle" fill="#566275">1080p</text><text x="293" y="222" font-size="12" text-anchor="middle" fill="#566275">2160p</text><text x="175" y="246" font-size="13" text-anchor="middle" fill="#566275">Resolution</text><line x1="44" y1="48.716831683168316" x2="305" y2="48.716831683168316" stroke="#8690a0" stroke-width="1.2" stroke-dasharray="4 3" /><polyline points="55,50.99 134,51.96 214,54.24 293,48.07" fill="none" stroke="#952d2d" stroke-width="2.1" /><polygon points="55.00,46.39 59.60,50.99 55.00,55.59 50.40,50.99" fill="#952d2d" stroke="#952d2d" stroke-width="1" /><polygon points="134.00,47.36 138.60,51.96 134.00,56.56 129.40,51.96" fill="#952d2d" stroke="#952d2d" stroke-width="1" /><polygon points="214.00,49.64 218.60,54.24 214.00,58.84 209.40,54.24" fill="#952d2d" stroke="#952d2d" stroke-width="1" /><polygon points="293.00,43.47 297.60,48.07 293.00,52.67 288.40,48.07" fill="#952d2d" stroke="#952d2d" stroke-width="1" /><polyline points="55,102.95 134,117.56 214,142.57 293,186.74" fill="none" stroke="#952d2d" stroke-width="2.1" stroke-dasharray="6 4" /><polygon points="55.00,98.35 59.60,102.95 55.00,107.55 50.40,102.95" fill="white" stroke="#952d2d" stroke-width="2" /><polygon points="134.00,112.96 138.60,117.56 134.00,122.16 129.40,117.56" fill="white" stroke="#952d2d" stroke-width="2" /><polygon points="214.00,137.97 218.60,142.57 214.00,147.17 209.40,142.57" fill="white" stroke="#952d2d" stroke-width="2" /><polygon points="293.00,182.14 297.60,186.74 293.00,191.34 288.40,186.74" fill="white" stroke="#952d2d" stroke-width="2" /></svg>
-        </div>
-        <div class="chart-key infra-key">
-          <div class="key-row"><span><b class="opt-a">■</b> +A</span><span><b class="opt-b">▲</b> +A+B</span><span><b class="opt-c">◆</b> +A+B+C</span></div>
-          <div class="key-row"><span><b class="opt-c">◆</b> With QAT</span><span><b class="opt-c">◇</b> Without QAT</span></div>
-        </div>
-        <figcaption>A fuses attention operators. B adds region-wise compilation. C uses FP8 in the feed-forward network. Shading marks the recommended FP8 resolutions. <a href="static/images/infra.png">Original figure</a></figcaption>
-      </figure>
-    </div>
-  </div>
+<section id="efficiency"><h2>Efficiency</h2>
+  <div class="chart-scroll" tabindex="0" aria-label="Efficiency plots"><div class="eff-grid">
+    <figure class="eff-card"><h3><b>A</b> Attention windows</h3><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 252" font-family="Arial,Helvetica,sans-serif" role="img" aria-labelledby="window-title window-desc"><title id="window-title">Change in time (%)</title><desc id="window-desc">Different spatial and temporal attention windows compared to the two-frame 7 by 7 default. Color indicates source resolution.</desc><text x="43" y="21" font-size="14" text-anchor="start" fill="#2b3240" font-weight="600">Change in time (%)</text><text x="36" y="188.91666666666666" font-size="12" text-anchor="end" fill="#566275">0</text><text x="36" y="160.77187499999997" font-size="12" text-anchor="end" fill="#566275">5</text><text x="36" y="132.62708333333336" font-size="12" text-anchor="end" fill="#566275">10</text><text x="36" y="104.48229166666667" font-size="12" text-anchor="end" fill="#566275">15</text><text x="36" y="76.3375" font-size="12" text-anchor="end" fill="#566275">20</text><text x="36" y="48.192708333333336" font-size="12" text-anchor="end" fill="#566275">25</text><line x1="44" y1="38" x2="44" y2="202" stroke="#a6b0bc" stroke-width="1" /><line x1="44" y1="202" x2="305" y2="202" stroke="#a6b0bc" stroke-width="1" /><text x="75.20364741641338" y="222" font-size="12" text-anchor="middle" fill="#566275">−0.2</text><text x="137.3465045592705" y="222" font-size="12" text-anchor="middle" fill="#566275">−0.1</text><text x="199.48936170212767" y="222" font-size="12" text-anchor="middle" fill="#566275">0</text><text x="261.6322188449848" y="222" font-size="12" text-anchor="middle" fill="#566275">0.1</text><text x="175" y="246" font-size="13" text-anchor="middle" fill="#566275">Change in PSNR (dB)</text><line x1="199.48936170212767" y1="38" x2="199.48936170212767" y2="202" stroke="#8690a0" stroke-width="1" stroke-dasharray="3 3" /><line x1="44" y1="184.91666666666666" x2="305" y2="184.91666666666666" stroke="#8690a0" stroke-width="1" stroke-dasharray="3 3" /><circle cx="84.45896656534954" cy="184.0625" r="3.7" fill="#198d83" stroke="#198d83" stroke-width="1" /><circle cx="68.85714285714286" cy="186.34027777777777" r="3.7" fill="#ce607d" stroke="#ce607d" stroke-width="1" /><circle cx="81.28571428571428" cy="183.77777777777777" r="3.7" fill="#8c71bb" stroke="#8c71bb" stroke-width="1" /><circle cx="75.20364741641338" cy="184.0625" r="3.7" fill="#c18a2a" stroke="#c18a2a" stroke-width="1" /><rect x="273.5340425531915" y="160.43194444444447" width="7.4" height="7.4" fill="#198d83" stroke="#198d83" stroke-width="1" /><rect x="276.4428571428571" y="180.3625" width="7.4" height="7.4" fill="#ce607d" stroke="#ce607d" stroke-width="1" /><rect x="226.99300911854104" y="182.07083333333335" width="7.4" height="7.4" fill="#8c71bb" stroke="#8c71bb" stroke-width="1" /><rect x="133.6465045592705" y="181.21666666666667" width="7.4" height="7.4" fill="#c18a2a" stroke="#c18a2a" stroke-width="1" /><polygon points="205.57,113.88 210.27,122.28 200.87,122.28" fill="#198d83" stroke="#198d83" stroke-width="1" /><polygon points="199.49,116.15 204.19,124.55 194.79,124.55" fill="#ce607d" stroke="#ce607d" stroke-width="1" /><polygon points="208.74,109.04 213.44,117.44 204.04,117.44" fill="#8c71bb" stroke="#8c71bb" stroke-width="1" /><polygon points="187.06,111.03 191.76,119.43 182.36,119.43" fill="#c18a2a" stroke="#c18a2a" stroke-width="1" /><polygon points="264.81,52.09 269.51,56.79 264.81,61.49 260.11,56.79" fill="#198d83" stroke="#198d83" stroke-width="1" /><polygon points="258.46,60.63 263.16,65.33 258.46,70.03 253.76,65.33" fill="#ce607d" stroke="#ce607d" stroke-width="1" /><polygon points="264.81,53.23 269.51,57.93 264.81,62.63 260.11,57.93" fill="#8c71bb" stroke="#8c71bb" stroke-width="1" /><polygon points="236.78,57.22 241.48,61.92 236.78,66.62 232.08,61.92" fill="#c18a2a" stroke="#c18a2a" stroke-width="1" /><polygon points="199.49,177.72 201.17,182.60 206.34,182.69 202.21,185.80 203.72,190.74 199.49,187.78 195.26,190.74 196.77,185.80 192.64,182.69 197.81,182.60" fill="#2b3240" stroke="#2b3240" stroke-width="1" /></svg>
+      <div class="chart-key"><div class="key-row"><span><b class="r480">●</b> 480p</span><span><b class="r720">●</b> 720p</span><span><b class="r1080">●</b> 1080p</span><span><b class="r4k">●</b> 2160p</span></div><div class="key-row"><span>● 2×3×3</span><span>■ 2×16×16</span><span>▲ 3×7×7</span><span>◆ 4×7×7</span><span>★ Default 2×7×7</span></div></div>
+    </figure>
+    <figure class="eff-card"><h3><b>B</b> Inference optimizations</h3><div class="infra-plots"><svg class="eff-plot" role="img" aria-label="End-to-end speedup at four resolutions" viewBox="0 0 320 252"><text x="44" y="22" class="axis-title">Speedup over LiveVAE (×)</text><rect x="174" y="40" width="129" height="158" fill="#faf0eb"/><path d="M44 40V198H303" fill="none" stroke="#a4abb0"/><text x="36" y="191.91" text-anchor="end">1</text><text x="36" y="158.30" text-anchor="end">1.5</text><text x="36" y="124.68" text-anchor="end">2</text><text x="36" y="91.06" text-anchor="end">2.5</text><text x="36" y="57.45" text-anchor="end">3</text><path d="M44 187.91H303" stroke="#92989d" stroke-dasharray="4 4"/><text x="62" y="220" text-anchor="middle">480p</text><text x="137" y="220" text-anchor="middle">720p</text><text x="212" y="220" text-anchor="middle">1080p</text><text x="287" y="220" text-anchor="middle">2160p</text><polyline points="62,143.14 137,136.62 212,135.14 287,142.33" fill="none" stroke="#cb8c81" stroke-width="2.4"/><rect x="58.5" y="139.64" width="7" height="7" fill="#cb8c81"/><rect x="133.5" y="133.12" width="7" height="7" fill="#cb8c81"/><rect x="208.5" y="131.64" width="7" height="7" fill="#cb8c81"/><rect x="283.5" y="138.83" width="7" height="7" fill="#cb8c81"/><polyline points="62,141.59 137,90.22 212,90.29 287,104.14" fill="none" stroke="#bd5d50" stroke-width="2.4"/><path d="M62,136.99l4.5,8h-9Z" fill="#bd5d50"/><path d="M137,85.62l4.5,8h-9Z" fill="#bd5d50"/><path d="M212,85.69l4.5,8h-9Z" fill="#bd5d50"/><path d="M287,99.54l4.5,8h-9Z" fill="#bd5d50"/><polyline points="62,186.44 137,115.17 212,53.65 287,70.86" fill="none" stroke="#902f2b" stroke-width="2.4"/><path d="M62,181.94l4.5,4.5l-4.5,4.5l-4.5,-4.5Z" fill="#902f2b" stroke="#902f2b" stroke-width="1.8"/><path d="M137,110.67l4.5,4.5l-4.5,4.5l-4.5,-4.5Z" fill="#902f2b" stroke="#902f2b" stroke-width="1.8"/><path d="M212,49.15l4.5,4.5l-4.5,4.5l-4.5,-4.5Z" fill="#902f2b" stroke="#902f2b" stroke-width="1.8"/><path d="M287,66.36l4.5,4.5l-4.5,4.5l-4.5,-4.5Z" fill="#902f2b" stroke="#902f2b" stroke-width="1.8"/></svg><svg class="eff-plot" role="img" aria-label="PSNR change at four resolutions" viewBox="0 0 320 252"><text x="44" y="22" class="axis-title">Change in PSNR (dB)</text><path d="M44 40V198H303" fill="none" stroke="#a4abb0"/><text x="36" y="174.49" text-anchor="end">-3</text><text x="36" y="135.18" text-anchor="end">-2</text><text x="36" y="95.88" text-anchor="end">-1</text><text x="36" y="56.58" text-anchor="end">0</text><path d="M44 52.58H303" stroke="#92989d" stroke-dasharray="4 4"/><text x="62" y="220" text-anchor="middle">480p</text><text x="137" y="220" text-anchor="middle">720p</text><text x="212" y="220" text-anchor="middle">1080p</text><text x="287" y="220" text-anchor="middle">2160p</text><polyline points="62,54.94 137,55.72 212,57.69 287,51.79" fill="none" stroke="#902f2b" stroke-width="2.4"/><path d="M62,50.44l4.5,4.5l-4.5,4.5l-4.5,-4.5Z" fill="#902f2b" stroke="#902f2b" stroke-width="1.8"/><path d="M137,51.22l4.5,4.5l-4.5,4.5l-4.5,-4.5Z" fill="#902f2b" stroke="#902f2b" stroke-width="1.8"/><path d="M212,53.19l4.5,4.5l-4.5,4.5l-4.5,-4.5Z" fill="#902f2b" stroke="#902f2b" stroke-width="1.8"/><path d="M287,47.29l4.5,4.5l-4.5,4.5l-4.5,-4.5Z" fill="#902f2b" stroke="#902f2b" stroke-width="1.8"/><polyline points="62,105.64 137,119.79 212,144.15 287,187.39" fill="none" stroke="#902f2b" stroke-width="2.4" stroke-dasharray="6 4"/><path d="M62,101.14l4.5,4.5l-4.5,4.5l-4.5,-4.5Z" fill="white" stroke="#902f2b" stroke-width="1.8"/><path d="M137,115.29l4.5,4.5l-4.5,4.5l-4.5,-4.5Z" fill="white" stroke="#902f2b" stroke-width="1.8"/><path d="M212,139.65l4.5,4.5l-4.5,4.5l-4.5,-4.5Z" fill="white" stroke="#902f2b" stroke-width="1.8"/><path d="M287,182.89l4.5,4.5l-4.5,4.5l-4.5,-4.5Z" fill="white" stroke="#902f2b" stroke-width="1.8"/></svg></div>
+      <div class="chart-key infra-key"><div class="key-row"><span><b class="opt-a">■</b> +A</span><span><b class="opt-b">▲</b> +AB</span><span><b class="opt-c">◆</b> +ABC</span></div><div class="key-row"><span><b class="opt-c">◆</b> +ABC with QAT</span><span><b class="opt-c">◇</b> +ABC without QAT</span></div></div>
+    </figure>
+  </div></div>
+  <dl class="opt-key"><div><dt>A</dt><dd>Attention fusion</dd></div><div><dt>B</dt><dd>Region-wise compilation</dd></div><div><dt>C</dt><dd>FP8 feed-forward layers with QAT</dd></div></dl>
 </section>
 
 <section id="bibtex">
@@ -233,7 +232,7 @@
   <p>Questions about LiveVAE are welcome through the issue tracker of this repository.</p>
 </footer>
 
-<script src="static/js/main.js"></script>
-<script src="static/js/streaming.js"></script>
+<script src="static/js/main.js?v=method4-2"></script>
+<script src="static/js/streaming.js?v=method4-2"></script>
 </body>
 </html>
