@@ -70,7 +70,7 @@ h2 { margin: 0 0 10px; font-size: 24px; line-height: 1.35; font-weight: 650; let
 h3 { font-size: 21px; font-weight: 630; letter-spacing: -0.025em; }
 p { margin: 0 0 16px; }
 .lede { max-width: var(--column); color: var(--muted); margin: 0 0 22px; }
-.abstract { max-width: var(--column); hyphens: none; }
+.abstract { max-width: none; text-align: justify; hyphens: none; }
 .abstract strong { font-weight: 650; }
 figure { margin: 0; }
 figcaption { color: var(--muted); font-size: 15px; line-height: 1.6; }
@@ -102,11 +102,13 @@ figcaption { color: var(--muted); font-size: 15px; line-height: 1.6; }
 .step-title { display: flex; align-items: center; gap: 10px; font-size: 19px; font-weight: 650; letter-spacing: -0.02em; line-height: 1.4; }
 .step-n { display: grid; place-items: center; flex: none; width: 24px; height: 24px; border-radius: 50%; background: var(--text); color: #fff; font-size: 13px; font-weight: 650; letter-spacing: 0; }
 .step-line { margin-top: 4px !important; color: var(--muted); font-size: 16px; line-height: 1.6; max-width: 760px; }
-.step-stage { position: relative; min-height: 340px; margin: 18px 0 0; display: grid; align-items: center; }
-.step-view { width: 100%; grid-area: 1 / 1; }
-/* Keep inactive steps in the layout (invisible) so the stage keeps the height of the tallest step and the page does not jump. */
-.step-stage > .step-view[hidden] { display: block !important; visibility: hidden; pointer-events: none; }
-.step-stage > .loc-probe[hidden] { display: grid !important; }
+.step-stage { position: relative; min-height: 340px; margin: 18px 0 0; display: grid; align-items: start; }
+/* All steps share one grid cell and stay in the layout, so the stage keeps the height of the tallest
+   step. The next step fades in on top; the previous one fades out a little later. */
+.step-view { width: 100%; grid-area: 1 / 1; opacity: 0; visibility: hidden; transition: opacity .3s ease .25s, visibility 0s linear .55s; }
+.step-view.on { opacity: 1; visibility: visible; z-index: 1; transition: opacity .45s ease, visibility 0s; }
+.step-stage.instant > .step-view { transition: none; }
+@media (prefers-reduced-motion: reduce) { .step-view, .step-view.on { transition: none; } }
 .step-bar { display: flex; align-items: center; gap: 14px; margin: 18px 0 10px; }
 .step-play { flex: none; width: 36px; height: 36px; border: 1px solid var(--rule); border-radius: 50%; background: #fff; color: var(--text); display: grid; place-items: center; cursor: pointer; }
 .step-play svg { width: 16px; height: 16px; fill: currentColor; }
@@ -178,7 +180,6 @@ figcaption { color: var(--muted); font-size: 15px; line-height: 1.6; }
 .o-win { fill: #fee391; fill-opacity: .82; stroke: #e0a800; stroke-width: 1.6; stroke-linejoin: round; }
 .o-query { fill: #807dbb; stroke: #5c58a0; stroke-width: .8; }
 .o-links line { stroke: #e0a800; stroke-width: 1.5; stroke-dasharray: 5 4; }
-.o-title { font-size: 18px; font-weight: 650; fill: var(--text); text-anchor: middle; }
 .o-tag path { fill: none; stroke: #a9afb8; stroke-width: 1.2; }
 .o-tag text { font-size: 14px; text-anchor: middle; font-weight: 600; }
 .o-tag.cache path { stroke: #e0a800; }
@@ -215,6 +216,13 @@ figcaption { color: var(--muted); font-size: 15px; line-height: 1.6; }
 .stream-svg .s-link { stroke: #e0a800; stroke-width: 1.8; }
 .stream-svg .s-ghost rect, .stream-svg .s-ghost polygon { fill: #fafaf9; stroke: #a9afb8; stroke-dasharray: 4 3; }
 .stream-svg .s-ghost text { fill: #a9afb8; }
+.stream-svg .s-frame { fill: none; stroke: #3d4450; stroke-width: 1.2; }
+.stream-svg .s-frame.out { stroke: #e58fbf; stroke-width: 2; }
+.stream-svg .s-range { font-size: 11.5px; fill: #8b929d; text-anchor: middle; font-variant-numeric: tabular-nums; }
+.stream-svg .s-ptitle { font-size: 14px; font-weight: 650; fill: var(--text); }
+.stream-svg .s-ptitle.out { fill: #807dbb; }
+.stream-svg .s-count { font-size: 12.5px; fill: var(--muted); font-variant-numeric: tabular-nums; }
+.stream-svg .s-blank { fill: #f3f4f6; }
 
 /* ---------- Results ---------- */
 .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0 16px; }
@@ -310,10 +318,13 @@ footer { padding-top: 44px; padding-bottom: 48px; color: var(--muted); font-size
 }
 @media (max-width: 480px) {
   .o-label, .stream-svg .s-t { font-size: 28px; }
-  .o-title { font-size: 28px; }
-  .o-tag text, .o-note, .o-side, .stream-svg .s-row { font-size: 24px; }
+  .o-tag text, .o-note, .o-side { font-size: 24px; }
+  .stream-svg .s-row { font-size: 16px; }
   .stream-svg .s-op { font-size: 20px; }
   .stream-svg .s-tag { font-size: 20px; }
+  .stream-svg .s-ptitle { font-size: 22px; }
+  .stream-svg .s-count, .stream-svg .s-range { font-size: 18px; }
+  .abstract { text-align: left; }
   .o-math { font-size: 28px; }
   .o-math.small { font-size: 24px; }
   .o-math .sub { font-size: 18px; }

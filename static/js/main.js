@@ -5,7 +5,7 @@ const videoDir = 'static/videos/';
 const $ = (id) => document.getElementById(id);
 const format = (n) => Number(n.toFixed(2)).toString();
 const taskNotes = {
-  recon: 'Each 720p clip is encoded and decoded by every VAE.',
+  recon: 'Every VAE encodes and decodes the same clip at its source resolution.',
   r2v: 'The clay render comes from the code world model. MiniMax-H3 turns it into video conditioned on the same reference image and prompt; each VAE encodes the reference and decodes the result.',
   t2v: 'Both VAEs decode the same generated latents.',
 };

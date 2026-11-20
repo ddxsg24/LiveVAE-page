@@ -32,7 +32,7 @@ from fractions import Fraction
 from pathlib import Path
 
 GUTTER = 12          # white gap between panels, in pixels
-CRF = 23
+CRF = 20          # high quality while keeping each composite near 10 MB or less
 
 # Columns per task, in display order: (file stem, label shown on the page)
 COLUMNS = {
@@ -47,38 +47,35 @@ COLUMNS = {
 # Selected clips: (task, path relative to the task root, output name, title)
 CLIPS = [
     # Reconstruction, MiniMax-H3 latent space (720p sources)
-    ("recon_h3", "h3/people/01_0c58e95d/720p", "recon_h3_people_01", "People"),
-    ("recon_h3", "h3/fast_motion/01_1770b97f/720p", "recon_h3_fast_motion_01", "Fast motion"),
-    ("recon_h3", "h3/fine_detail/01_0451a3b0/720p", "recon_h3_fine_detail_01", "Fine detail"),
-    ("recon_h3", "h3/animals/01_128fd24a/720p", "recon_h3_animals_01", "Animals"),
-    ("recon_h3", "h3/urban_indoor/01_18c07b0a/720p", "recon_h3_urban_indoor_01", "Urban and indoor"),
-    # Reconstruction, Wan2.2 latent space
-    ("recon_wan22", "wan22/people/01_0c58e95d/720p", "recon_wan22_people_01", "People"),
-    ("recon_wan22", "wan22/fast_motion/02_1770b97f/720p", "recon_wan22_fast_motion_02", "Fast motion"),
-    ("recon_wan22", "wan22/fine_detail/01_1bc8fa68/720p", "recon_wan22_fine_detail_01", "Fine detail"),
-    ("recon_wan22", "wan22/nature/01_28dc5178/720p", "recon_wan22_nature_01", "Nature"),
+    ("recon_h3", "h3/people/03_162a710c/720p", "recon_h3_library", "Library"),
+    ("recon_h3", "h3/fine_detail/02_186c3f01/720p", "recon_h3_ice", "Ice"),
+    ("recon_h3", "h3/urban_indoor/02_106ea626/720p", "recon_h3_cooking", "Cooking"),
+    ("recon_h3", "h3/urban_indoor/01_18c07b0a/720p", "recon_h3_interior", "Interior"),
+    ("recon_h3", "h3/fast_motion/01_1770b97f/720p", "recon_h3_stage", "Stage fire"),
+    # Reconstruction, Wan2.2 latent space (the game clip is 480p: its 720p files exceed the Drive download limit)
+    ("recon_wan22", "wan22/fast_motion/03_38403026/480p", "recon_wan22_game", "Game cinematic"),
+    ("recon_wan22", "wan22/people/02_162a710c/720p", "recon_wan22_library", "Library"),
+    ("recon_wan22", "wan22/nature/01_28dc5178/720p", "recon_wan22_kayak", "Ice kayak"),
+    ("recon_wan22", "wan22/fast_motion/01_3dfc8bd1/720p", "recon_wan22_motocross", "Motocross"),
     # Reference to video (MiniMax-H3 only; Wan2.2 has no reference generation)
     ("r2v", "gaming_01", "gaming_01", "Gaming"),
     ("r2v", "robotics_simulation_01_a", "robotics_simulation_01_a", "Robotics simulation"),
     ("r2v", "scene_world_editing_01_a", "scene_world_editing_01_a", "Scene and world editing"),
     ("r2v", "trajectory_variation_01_a", "trajectory_variation_01_a", "Trajectory variation"),
     ("r2v", "physical_grounding_01", "physical_grounding_01", "Physical grounding"),
-    ("r2v", "bullet_time_02", "bullet_time_02", "Bullet time"),
     ("r2v", "architectural_cinematics_01", "architectural_cinematics_01", "Architectural cinematics"),
     ("r2v", "product_cinematography_01", "product_cinematography_01", "Product cinematography"),
-    # Text to video (same DiT latents, only the VAE differs). The Drive connector only
-    # downloads files under 10 MB, which leaves these three prompts.
-    ("t2v", "h3/fine_detail/02_A_clear_glass_of_coffee_is_gently_poured", "t2v_fine_detail_02", "Coffee pour"),
-    ("t2v", "h3/nature/02_The_scene_opens_in_the_vast_desert_with", "t2v_nature_02", "Desert"),
-    ("t2v", "h3/fine_detail/01_A_clear_glass_of_coconut_oil_is_gently_p", "t2v_fine_detail_01", "Coconut oil pour"),
+    # Text to video (same DiT latents, only the VAE differs)
+    ("t2v", "h3/fine_detail/02_A_clear_glass_of_coffee_is_gently_poured", "t2v_coffee", "Coffee pour"),
 ]
 
-# Panel size per task (width, height) and grid layout (columns, rows)
+# Grid layout (columns, rows) per task. Panels keep the source resolution (no rescaling),
+# except r2v, whose generations are downscaled to 640x360 panels.
 LAYOUT = {
-    "recon_h3": ((960, 540), (2, 2)),
-    "recon_wan22": ((960, 540), (2, 2)),
+    "recon_h3": (None, (2, 2)),
+    "recon_wan22": (None, (2, 2)),
     "r2v": ((640, 360), (3, 1)),
-    "t2v": ((960, 536), (2, 1)),
+    "t2v": (None, (2, 1)),
 }
 
 
@@ -114,13 +111,14 @@ def agreement(a, b, frames):
 
 def build(task, src_dir, name, out_dir, offsets=None):
     cols = COLUMNS[task]
-    (pw, ph), (gx, gy) = LAYOUT[task]
+    panel, (gx, gy) = LAYOUT[task]
     files = [src_dir / f"{stem}.mp4" for stem, _ in cols]
     missing = [f for f in files if not f.exists()]
     if missing:
         print(f"skip {name}: missing {', '.join(m.name for m in missing)}")
         return None
     info = [probe(f) for f in files]
+    pw, ph = panel or (info[0][2], info[0][3])
     rates = {r for _, r, _, _ in info}
     # Generated panels sometimes carry a slightly different time base (e.g. code video
     # 24 fps vs 24.0 fps rounding); use the most common rate and play frames one to one.
@@ -190,6 +188,9 @@ def main():
     # Keep entries of clips that are not rebuilt in this run (e.g. r2v when --r2v is omitted).
     manifest = args.out / "clips.json"
     summary = json.loads(manifest.read_text()) if manifest.exists() else {}
+    # Tasks rebuilt in this run are replaced as a whole, so dropped clips leave the manifest.
+    rebuilt = {task for task, *_ in CLIPS if roots[task] is not None}
+    summary = {k: v for k, v in summary.items() if v["task"] not in rebuilt}
     for entry in summary.values():
         entry["labels"] = [label for _, label in COLUMNS[entry["task"]]]
     for task, rel, name, title in CLIPS:

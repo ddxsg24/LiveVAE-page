@@ -108,7 +108,6 @@ def chart_speedup():
             f'<text x="{X1 - 5}" y="{YB - 6}" text-anchor="end" class="shade-label">FP8 recommended</text>']
     body += frame("Speedup over LiveVAE (×)", [(v, f(v)) for v in (1, 1.5, 2, 2.5, 3)], ym,
                   "Resolution", [(category_x(i), r) for i, r in enumerate(RES)])
-    body.append(f'<path d="M{X0} {f(ym(1))}H{X1}" stroke="{BASE}" stroke-dasharray="4 4"/>')
     for _, color, shape, values in SPEEDUP:
         pts = " ".join(f"{f(category_x(i))},{f(ym(v))}" for i, v in enumerate(values))
         body.append(f'<polyline points="{pts}" fill="none" stroke="{color}" stroke-width="2.2"/>')
@@ -149,12 +148,12 @@ def section():
              + '</ul><ul class="legend legend-wrap">'
              + "".join(f"<li>{dot(SHAPE[w], '#5b6470')}{w}</li>" for w in WINDOWS)
              + f"<li>{dot('star', '#2b3240')}2×7×7 (default)</li></ul>")
-    key_b = legend([(swatch(BASE, dashed=True), "LiveVAE")] + [(swatch(c, s), n) for n, c, s, _ in SPEEDUP])
+    key_b = legend([(swatch(c, s), n) for n, c, s, _ in SPEEDUP])
     key_c = legend([(swatch(BASE, dashed=True), "LiveVAE"), (swatch(DARK, "diamond"), PSNR[0][0]),
                     (swatch(DARK, "diamond", dashed=True, hollow=True), PSNR[1][0])])
     cards = [
-        ("A", "Attention windows", chart_windows(), key_a, "Relative to the default 2 × 7 × 7 window."),
-        ("B", "Infrastructure optimization speedup", chart_speedup(), key_b, "Cumulative end to end speedup over LiveVAE."),
+        ("A", "Attention Windows", chart_windows(), key_a, "Relative to the default 2 × 7 × 7 window."),
+        ("B", "Infrastructure Optimization Speedup", chart_speedup(), key_b, "Cumulative end to end speedup over LiveVAE."),
         ("C", "PSNR with FP8", chart_psnr(), key_c, "QAT recovers the PSNR lost to FP8."),
     ]
     html = ['<section id="efficiency"><h2>Efficiency</h2>', '  <div class="eff-grid">']

@@ -13,6 +13,8 @@ static/js/main.js        result tabs built from static/videos/clips.json, lazy v
 static/js/explainer.js   step by step animations of the Locality and Method sections
 static/images/           paper figures (teaser, motivation, method overview, efficiency plots)
 static/images/locality/  example frame and receptive field maps used by the Locality animation
+static/explainer/        frames 0 to 32 of the streaming clip (input and LiveVAE output) as sprite sheets
+tools/efficiency_plots.py  writes the three Efficiency charts into index.html
 static/videos/           comparison videos, one file per clip, plus clips.json
 tools/build_videos.py    builds the comparison videos and clips.json from the result folders
 ```
@@ -55,11 +57,14 @@ in a wipe view. Clips not rebuilt in a run keep their existing `clips.json` entr
 
 `static/js/explainer.js` drives both step explainers with one player: each step is a
 `.step-view` in `index.html` (title, line and duration in its data attributes) and a
-draw function that renders the step at progress t from 0 to 1. The receptive field
-numbers in the Locality steps come from the paper's motivation figure. The last Locality
-step and all Method steps follow the drawing and colors of the paper's method figure:
-oblique latent frames with dashed links between windows (panel b) and the streaming
-encoder and decoder columns (panel d).
+draw function that renders the step at progress t from 0 to 1. Steps crossfade, and a
+step opens in the state the previous one ends in, so shared drawings continue instead of
+cutting. The receptive field numbers in the Locality steps come from the paper's
+motivation figure. The Method steps follow the drawing and colors of the paper's method
+figure: oblique latent frames with dashed links between windows (panel b) and the
+streaming encoder and decoder columns (panel d). Step 4 streams the first 33 frames of a
+Wan2.2 reconstruction clip (480p, 50 fps) through that diagram, using the sprite sheets in
+`static/explainer/` (11 frames of 312×180 per row; ground truth input and LiveVAE output).
 
 For generations the script prints how well the MiniMax-H3 and LiveVAE panels agree on
 frame 0 and over the clip. A reference to video clip that already disagrees on frame 0

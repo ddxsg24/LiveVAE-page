@@ -69,7 +69,14 @@
       step = (n + views.length) % views.length;
       // While paused, show the finished state of the chosen step.
       elapsed = playing() ? 0 : duration();
-      views.forEach((v, i) => { v.hidden = i !== step; });
+      // The new step fades in on top of the old one, which fades out a little later (CSS),
+      // so elements shared by consecutive steps stay in place instead of blinking.
+      views.forEach((v, i) => {
+        const on = i === step;
+        v.classList.toggle('on', on);
+        v.inert = !on;
+        v.setAttribute('aria-hidden', String(!on));
+      });
       head.querySelector('.step-n').textContent = step + 1;
       head.querySelector('.step-name').textContent = views[step].dataset.title;
       head.querySelector('.step-line').textContent = views[step].dataset.line;
@@ -103,9 +110,11 @@
       new IntersectionObserver(([e]) => { visible = e.isIntersecting; sync(); }, { threshold: .25 }).observe(root);
     } else { visible = true; }
     // Draw every step once so the stage is sized by the tallest step from the start.
+    stage.classList.add('instant');
     views.forEach((v, i) => draws[i](1, v));
     select(0);
     sync();
+    requestAnimationFrame(() => requestAnimationFrame(() => stage.classList.remove('instant')));
   }
 
   /* ---------- Locality ---------- */
@@ -141,10 +150,28 @@
   }
 
   function drawSpace(t, view) {
+    // The decoder map of step 1 moves into the first slot while the other maps fade in.
+    const erfs = [...view.querySelectorAll('.erf')];
+    const first = erfs[0].querySelector('.erf-map');
+    const move = ease(part(t, .08, .2));
+    const from = move < 1 && view.parentElement.querySelector('.probe-map img');
+    if (from) {
+      const a = from.getBoundingClientRect(), b = erfs[0].getBoundingClientRect();
+      const sc = a.width / b.width;
+      first.style.transformOrigin = '0 0';
+      first.style.transform = `translate(${(a.left - b.left) * (1 - move)}px, ${(a.top - b.top) * (1 - move)}px) scale(${sc + (1 - sc) * move})`;
+    } else first.style.transform = '';
+    const appear = ease(part(t, .14, .26));
+    erfs.forEach((erf, n) => {
+      if (n) erf.style.opacity = appear;
+      erf.querySelector('p').style.opacity = appear;
+      erf.querySelector('i').style.opacity = appear;
+    });
+    view.querySelector('.chips').style.opacity = appear;
     // Window index: 0 = 3x3, 1 = 5x5, 2 = 7x7, 3 = 9x9; it rests on 7x7.
-    const idx = keys(t, [[0, 0], [.13, 0], [.21, 1], [.32, 1], [.40, 2], [.51, 2], [.59, 3], [.69, 3], [.77, 2], [1, 2]]);
+    const idx = keys(t, [[0, 0], [.27, 0], [.34, 1], [.43, 1], [.5, 2], [.59, 2], [.66, 3], [.74, 3], [.81, 2], [1, 2]]);
     const k = 3 + 2 * idx;
-    view.querySelectorAll('.erf').forEach((erf, n) => {
+    erfs.forEach((erf, n) => {
       const values = erf.dataset.values.split(' ').map(Number);
       const win = erf.querySelector('i');
       const size = k / 15 * 100;
@@ -154,7 +181,7 @@
       erf.style.setProperty('--c', MODEL_COLORS[n]);
     });
     view.querySelectorAll('.chips span').forEach((c, i) => c.classList.toggle('on', i === Math.round(idx)));
-    view.querySelector('.note').style.opacity = part(t, .8, .88);
+    view.querySelector('.note').style.opacity = part(t, .84, .9);
   }
 
   function drawTime(t, view) {
@@ -208,7 +235,8 @@
 
   // Drawing order of the method figure: planes, then the dashed links, then windows and queries.
   function layers(s) {
-    if (!s.layers) s.layers = { planes: svg(s, 'g'), links: svg(s, 'g', { class: 'o-links' }), wins: svg(s, 'g') };
+    const root = s.scene || s;
+    if (!s.layers) s.layers = { planes: svg(root, 'g'), links: svg(root, 'g', { class: 'o-links' }), wins: svg(root, 'g') };
     return s.layers;
   }
   // A latent frame of n x n tokens drawn as an oblique vertical plane: columns run right and up,
@@ -280,57 +308,36 @@
   const arrow = (parent, x1, y1, x2, y2, kind, prefix) =>
     svg(parent, 'line', { x1, y1, x2, y2, class: 'o-arrow ' + kind, 'marker-end': `url(#${prefix}${kind})` });
 
-  // Four frames side by side, as in panel (b).
+  // Four frames side by side, as in panel (b). Method steps 1 to 3 share this geometry and
+  // a 760 x 420 view box, so each step opens exactly where the previous one ended.
   const ROW4 = { w: 100, rise: 80, h: 210, y: 112, pitch: 175, x0: 67 };
   const ROLES = ['unused', 'past', 'current', 'unused'];
   const NAMES = ['t − 2', 't − 1', 't', 't + 1'];
 
-  function drawWindow(t, view) {
-    const s = view.querySelector('svg');
-    const n = 15, c0 = winStart(7, n), { w, rise, h, y, pitch, x0 } = ROW4;
-    if (!s.frames) {
-      s.frames = NAMES.map((name, i) => {
-        const f = oframe(s, n, w, rise, h, y);
-        place(f, x0 + i * pitch, ROLES[i], name);
-        return f;
-      });
-      s.links = links(s);
-      const [, prev, cur] = s.frames;
-      s.title = svg(s, 'text', { x: (prev.pt(7.5, 0)[0] + cur.pt(7.5, 0)[0]) / 2, y: 24, class: 'o-title' }, '2 × 7 × 7 window');
-    }
-    const [old, prev, cur, next] = s.frames;
-    const fade = (f, a, b) => { f.g.style.opacity = f.wg.style.opacity = ease(part(t, a, b)); };
-    fade(prev, 0, .16); fade(cur, .06, .22); fade(old, .12, .28); fade(next, .12, .28);
-    setWin(prev, c0, c0, ease(part(t, .22, .38)));
-    setWin(cur, c0, c0, ease(part(t, .22, .38)));
-    setQuery(cur, 7, 7, ease(part(t, .3, .42)));
-    setLinks(s.links, prev, cur, c0, c0, ease(part(t, .42, .7)));
-    s.title.style.opacity = part(t, .7, .84);
-  }
-
   const locality = document.getElementById('locality-explainer');
-  if (locality) stepper(locality, [drawProbe, drawSpace, drawTime, drawWindow]);
+  if (locality) stepper(locality, [drawProbe, drawSpace, drawTime]);
 
   /* ---------- Method ---------- */
 
-  const N = 16;
+  const N = 16, Q = 8;          // tokens per side; the query rests at (Q, Q) between steps
+  const fourFrames = s => {
+    const { w, rise, h, y, pitch, x0 } = ROW4;
+    return NAMES.map((name, i) => {
+      const f = oframe(s, N, w, rise, h, y);
+      place(f, x0 + i * pitch, ROLES[i], name);
+      return f;
+    });
+  };
 
   function drawMask(t, view) {
     const s = view.querySelector('svg');
-    const { w, rise, h, y, pitch, x0 } = ROW4;
-    if (!s.frames) {
-      s.frames = NAMES.map((name, i) => {
-        const f = oframe(s, N, w, rise, h, y);
-        place(f, x0 + i * pitch, ROLES[i], name);
-        return f;
-      });
-      s.frames[3].label.textContent = 't + 1, masked';
-      s.links = links(s);
-    }
-    // The query moves through frame t along a figure eight that reaches every border.
-    const u = t * 2 * Math.PI;
-    const qc = clamp(Math.round(7.5 + 7.8 * Math.sin(u)), 0, N - 1);
-    const qr = clamp(Math.round(7.5 + 7.8 * Math.sin(2 * u + .35)), 0, N - 1);
+    if (!s.frames) { s.frames = fourFrames(s); s.links = links(s); }
+    // The query moves through frame t along a figure eight that reaches every border,
+    // starting and ending at (Q, Q), where step 2 picks it up.
+    const u = clamp(t / .9) * 2 * Math.PI;
+    const at = v => clamp(Math.round(7.5 + 7.8 * v + 1e-6), 0, N - 1);
+    const qc = u >= 2 * Math.PI ? Q : at(Math.sin(u));
+    const qr = u >= 2 * Math.PI ? Q : at(Math.sin(2 * u));
     const c0 = winStart(qc, N), r0 = winStart(qr, N);
     const [, prev, cur] = s.frames;
     setWin(prev, c0, r0, 1);
@@ -342,40 +349,44 @@
   function drawCache(t, view) {
     const s = view.querySelector('svg');
     const { w, rise, h, y, pitch, x0 } = ROW4;
+    const names = ['t − 2', 't − 1', 't', 't + 1', 't + 2'];
     if (!s.frames) {
-      s.frames = ['t − 2', 't − 1', 't', 't + 1', 't + 2'].map(() => oframe(s, N, w, rise, h, y));
+      s.frames = names.map(() => oframe(s, N, w, rise, h, y));
       s.links = links(s);
       const tag = (slot, text, cls) => {
         const x = x0 + slot * pitch, yb = y + h + 44;
         const g = svg(s, 'g', { class: 'o-tag ' + cls });
         svg(g, 'path', { d: `M${x} ${yb - 6}v6h${w}v-6` });
         svg(g, 'text', { x: x + w / 2, y: yb + 22 }, text);
+        return g;
       };
-      tag(1, 'KV cache: 1 frame', 'cache');
-      tag(2, 'Current frame', 'current');
-      s.evict = svg(s, 'text', { y: 30, class: 'o-note evict' }, 'evicted');
-      s.arrive = svg(s, 'text', { y: 30, class: 'o-note' }, 'new latent frame');
+      s.tags = [tag(1, 'KV cache: 1 frame', 'cache'), tag(2, 'Current frame', 'current')];
+      s.evict = svg(s, 'text', { y: 26, class: 'o-note evict' }, 'evicted');
+      s.arrive = svg(s, 'text', { y: 26, class: 'o-note' }, 'new latent frame');
     }
     // t is current and t − 1 cached; after the slide t + 1 is current, t cached and t − 1 evicted.
+    // Near the end the labels switch to names relative to the new current frame, as step 3 uses.
     const slide = ease(part(t, .34, .64));
     const show = clamp(1 - part(t, .24, .32) + part(t, .68, .76));
-    const names = ['t − 2', 't − 1', 't', 't + 1', 't + 2'];
+    const rel = part(t, .8, .9);
     const roleAt = p => (p === 1 ? 'past' : p === 2 ? 'current' : 'unused');
     let past, cur;
     s.frames.forEach((f, k) => {
       const p = k - slide, slot = Math.round(p);
       const alpha = k === 0 ? 1 - slide : k === 4 ? slide : 1;
-      place(f, x0 + p * pitch, roleAt(slot), names[k], alpha);
+      place(f, x0 + p * pitch, roleAt(slot), rel < .5 ? names[k] : NAMES[slot] || '', alpha);
+      f.label.style.opacity = Math.abs(1 - 2 * rel);
       setWin(f, 0, 0, 0);
       setQuery(f, 0, 0, 0);
       if (slot === 1) past = f;
       if (slot === 2) cur = f;
     });
-    const c0 = winStart(8, N);
+    const c0 = winStart(Q, N);
     setWin(past, c0, c0, show);
     setWin(cur, c0, c0, show);
-    setQuery(cur, 8, 8, show);
+    setQuery(cur, Q, Q, show);
     setLinks(s.links, past, cur, c0, c0, 1, show);
+    s.tags.forEach(g => { g.style.opacity = ease(part(t, .04, .16)); });
     s.evict.setAttribute('x', s.frames[1].pt(N / 2, 0)[0]);
     s.evict.style.opacity = part(t, .5, .6) * (1 - part(t, .86, .94));
     s.arrive.setAttribute('x', s.frames[4].pt(N / 2, 0)[0]);
@@ -384,68 +395,94 @@
 
   function drawMerge(t, view) {
     const s = view.querySelector('svg');
-    const w = 84, rise = 66, h = 170, y = 90, pitch = 175, x0 = 76;
+    // The frames shrink upward (scale .75 about the top center) to make room for the passes.
+    const SC = .75, TX = 380 * (1 - SC), TY = 32 * (1 - SC) - 20;
+    const X = x => TX + SC * x, Y = y => TY + SC * y;
     if (!s.frames) {
       markers(s, 'mm-');
-      s.frames = NAMES.map((name, i) => {
-        const f = oframe(s, N, w, rise, h, y);
-        place(f, x0 + i * pitch, ROLES[i], name);
-        // Labels sit left of the lowest corner, so the arrows below stay clear.
-        f.label.setAttribute('x', -10);
-        f.label.setAttribute('y', y + h - 2);
-        f.label.style.textAnchor = 'end';
-        return f;
-      });
+      s.scene = svg(s, 'g');
+      s.frames = fourFrames(s);
       s.links = links(s);
       const [, prev, cur] = s.frames;
-      const c0 = winStart(7, N);
-      setWin(prev, c0, c0, 1); setWin(cur, c0, c0, 1); setQuery(cur, 7, 7, 1);
-      setLinks(s.links, prev, cur, c0, c0, 1, .5);
-      svg(s, 'text', { x: prev.x - 10, y: y + h + 26, class: 'o-note cache' }, 'from cache');
-      const g = s.drawing = svg(s, 'g');
-      const xa = prev.pt(7.5, 0)[0], xb = cur.pt(7.5, 0)[0], yw = prev.pt(7.5, c0 + K)[1] + 4;
-      const box = (x, yy, bw, bh, cls) => svg(g, 'rect', { x: x - bw / 2, y: yy, width: bw, height: bh, rx: 6, class: 'o-box ' + cls });
-      s.p1 = svg(g, 'g'); s.p2 = svg(g, 'g'); s.p3 = svg(g, 'g'); s.p4 = svg(g, 'g');
-      arrow(s.p1, xa, yw, xa, 302, 'y', 'mm-');
-      s.p1.append(box(xa, 306, 148, 36, 'pass'));
-      mathText(s.p1, [['o'], ['t−1', 'sub'], [', ℓ'], ['t−1', 'sub']], { x: xa, y: 330 });
-      svg(s.p1, 'text', { x: xa - 84, y: 329, class: 'o-side end' }, 'pass 1');
-      arrow(s.p2, xb, yw, xb, 302, 'p', 'mm-');
-      s.p2.append(box(xb, 306, 148, 36, 'pass now'));
-      mathText(s.p2, [['o'], ['t', 'sub'], [', ℓ'], ['t', 'sub']], { x: xb, y: 330 });
-      svg(s.p2, 'text', { x: xb + 84, y: 329, class: 'o-side' }, 'pass 2');
-      const xm = (xa + xb) / 2;
-      arrow(s.p3, xa + 20, 344, xm - 50, 366, 'g', 'mm-');
-      arrow(s.p3, xb - 20, 344, xm + 50, 366, 'g', 'mm-');
-      s.p3.append(box(xm, 370, 300, 58, 'merge'));
-      mathText(s.p3, [['o = w'], ['t−1', 'sub'], [' o'], ['t−1', 'sub'], [' + w'], ['t', 'sub'], [' o'], ['t', 'sub']], { x: xm, y: 395 });
-      mathText(s.p3, [['w = softmax(ℓ'], ['t−1', 'sub'], [', ℓ'], ['t', 'sub'], [')']], { x: xm, y: 418, class: 'o-math small' });
-      svg(s.p4, 'text', { x: xm, y: 452, class: 'o-note exact' }, 'exactly one softmax over both windows');
+      const g = svg(s, 'g');
+      const [ax, ay] = prev.pt(Q + .5, winStart(Q, N) + K), [bx, by] = cur.pt(Q + .5, winStart(Q, N) + K);
+      const xa = X(ax), ya = Y(ay) + 4, xb = X(bx), yb = Y(by) + 4;
+      const b1 = xa - 40, b2 = xb + 40, xm = (b1 + b2) / 2;
+      const box = (parent, x, yy, bw, bh, cls) => svg(parent, 'rect', { x: x - bw / 2, y: yy, width: bw, height: bh, rx: 6, class: 'o-box ' + cls });
+      s.p = [0, 1, 2, 3].map(() => svg(g, 'g'));
+      arrow(s.p[0], xa, ya, b1, 278, 'y', 'mm-');
+      box(s.p[0], b1, 280, 120, 34, 'pass');
+      mathText(s.p[0], [['o'], ['t−1', 'sub'], [', ℓ'], ['t−1', 'sub']], { x: b1, y: 302 });
+      svg(s.p[0], 'text', { x: b1 - 70, y: 294, class: 'o-side end' }, 'pass 1');
+      svg(s.p[0], 'text', { x: b1 - 70, y: 312, class: 'o-note cache' }, 'from cache');
+      arrow(s.p[1], xb, yb, b2, 278, 'p', 'mm-');
+      box(s.p[1], b2, 280, 120, 34, 'pass now');
+      mathText(s.p[1], [['o'], ['t', 'sub'], [', ℓ'], ['t', 'sub']], { x: b2, y: 302 });
+      svg(s.p[1], 'text', { x: b2 + 70, y: 302, class: 'o-side' }, 'pass 2');
+      arrow(s.p[2], b1 + 24, 316, xm - 60, 334, 'g', 'mm-');
+      arrow(s.p[2], b2 - 24, 316, xm + 60, 334, 'g', 'mm-');
+      box(s.p[2], xm, 336, 300, 54, 'merge');
+      mathText(s.p[2], [['o = w'], ['t−1', 'sub'], [' o'], ['t−1', 'sub'], [' + w'], ['t', 'sub'], [' o'], ['t', 'sub']], { x: xm, y: 359 });
+      mathText(s.p[2], [['w = softmax(ℓ'], ['t−1', 'sub'], [', ℓ'], ['t', 'sub'], [')']], { x: xm, y: 381, class: 'o-math small' });
+      svg(s.p[3], 'text', { x: xm, y: 410, class: 'o-note exact' }, 'exactly one softmax over both windows');
     }
+    // Nothing moves until the crossfade from step 2 has finished (about 0.55 s).
+    const zoom = ease(part(t, .08, .2)), sc = 1 - (1 - SC) * zoom;
+    s.scene.setAttribute('transform', `translate(${380 * (1 - sc)} ${32 * (1 - sc) - 20 * zoom}) scale(${sc})`);
     const [, prev, cur] = s.frames;
-    const p1 = ease(part(t, .04, .22)), p2 = ease(part(t, .3, .48)), p3 = ease(part(t, .56, .72)), p4 = part(t, .8, .9);
-    prev.win.style.opacity = .35 + .65 * Math.max(p1 * (1 - .5 * p2), p3);
-    cur.win.style.opacity = cur.query.style.opacity = .35 + .65 * Math.max(p2, p3);
-    s.p1.style.opacity = p1; s.p2.style.opacity = p2; s.p3.style.opacity = p3; s.p4.style.opacity = p4;
+    const c0 = winStart(Q, N);
+    const p1 = ease(part(t, .24, .38)), p2 = ease(part(t, .42, .56)), p3 = ease(part(t, .62, .76)), p4 = part(t, .84, .92);
+    // Step 2 ends with both windows at full strength; they dim, then light up with their pass.
+    const dim = ease(part(t, .1, .2));
+    const hiPrev = Math.max(p1 * (1 - .5 * p2), p3), hiCur = Math.max(p2, p3);
+    setWin(prev, c0, c0, 1 - .65 * dim * (1 - hiPrev));
+    setWin(cur, c0, c0, 1 - .65 * dim * (1 - hiCur));
+    setQuery(cur, Q, Q, 1 - .65 * dim * (1 - hiCur));
+    setLinks(s.links, prev, cur, c0, c0, 1, 1 - .5 * dim);
+    [p1, p2, p3, p4].forEach((v, i) => { s.p[i].style.opacity = v; });
   }
 
-  // Streaming inference as in panel (d): one column per step, sliding left after each step.
+  // Streaming inference as in panel (d), on a real clip: the first 33 frames of a Wan2.2
+  // reconstruction clip (input) and the LiveVAE output for them. Latent 0 holds frame 0,
+  // latent L >= 1 holds frames 4L − 3 to 4L. Sprite sheets: 11 frames per row, 312 x 180 each.
+  const SPRITE = { fw: 312, fh: 180, cols: 11, rows: 3, src: ['static/explainer/stream_in.jpg', 'static/explainer/stream_out.jpg'] };
+  const LATENTS = 9;
+  const chunk = L => (L === 0 ? [0, 0] : [4 * L - 3, 4 * L]);
+  const rangeText = L => (L === 0 ? 'frame 0' : `frames ${4 * L - 3}–${4 * L}`);
+
+  // A frame of a sprite sheet in an SVG viewport; show(i) picks the frame.
+  function frameImage(parent, sheet, x, y, w, h) {
+    const v = svg(parent, 'svg', { x, y, width: w, height: h, preserveAspectRatio: 'none' });
+    svg(v, 'image', { href: SPRITE.src[sheet], width: SPRITE.fw * SPRITE.cols, height: SPRITE.fh * SPRITE.rows });
+    v.show = i => v.setAttribute('viewBox', `${(i % SPRITE.cols) * SPRITE.fw} ${Math.floor(i / SPRITE.cols) * SPRITE.fh} ${SPRITE.fw} ${SPRITE.fh}`);
+    v.show(0);
+    return v;
+  }
+
   function drawStream(t, view) {
     const s = view.querySelector('svg');
-    const ROW = { inp: 54, enc: 144, lat: 226, dec: 308, out: 390 };
-    const X0 = 530, DX = 160;
+    const ROW = { inp: 66, enc: 152, lat: 230, dec: 308, out: 394 };
+    const X0 = 340, DX = 120, CW = 64, CH = 37, OFF = 4;
     if (!s.cols) {
       markers(s, 'ms-');
       const fixed = svg(s, 'g');
       [['input', 'inp'], ['encoder', 'enc'], ['latent', 'lat'], ['decoder', 'dec'], ['output', 'out']]
-        .forEach(([text, k]) => svg(fixed, 'text', { x: 118, y: ROW[k] + 5, class: 's-row' }, text));
+        .forEach(([text, k]) => svg(fixed, 'text', { x: 52, y: ROW[k] + 5, class: 's-row' }, text));
       [['t − 2', ''], ['t − 1', 'past'], ['t', 'current'], ['t + 1', '']]
-        .forEach(([text, cls], i) => svg(fixed, 'text', { x: X0 + (i - 2) * DX, y: 444, class: 's-t ' + cls }, text));
+        .forEach(([text, cls], i) => svg(fixed, 'text', { x: X0 + (i - 2) * DX, y: 452, class: 's-t ' + cls }, text));
 
-      const stack = (g, yy, fill, stroke) => [8, 4, 0].map(d =>
-        svg(g, 'rect', { x: -30 + d, y: yy - 19 - d, width: 60, height: 38, rx: 3, fill, stroke, 'stroke-width': 1.3 }));
+      // Card j = 0 is the front card. Cards of one chunk fan out up and to the right.
+      const cards = (g, yy, sheet) => [3, 2, 1, 0].map(j => {
+        const c = svg(g, 'g');
+        c.img = frameImage(c, sheet, -CW / 2 + OFF * j, yy - CH / 2 - OFF * j, CW, CH);
+        svg(c, 'rect', { x: -CW / 2 + OFF * j, y: yy - CH / 2 - OFF * j, width: CW, height: CH, class: sheet ? 's-frame out' : 's-frame' });
+        c.j = j;
+        return c;
+      }).reverse();
+      const ghostStack = (g, yy) => [8, 4, 0].map(d =>
+        svg(g, 'rect', { x: -CW / 2 + d, y: yy - CH / 2 - d, width: CW, height: CH, rx: 2 }));
       const trap = (g, yy, enc) => {
-        const top = enc ? 40 : 26, bot = enc ? 26 : 40;
+        const top = enc ? 34 : 22, bot = enc ? 22 : 34;
         const shape = svg(g, 'polygon', { points: `${-top},${yy - 20} ${top},${yy - 20} ${bot},${yy + 20} ${-bot},${yy + 20}` });
         svg(g, 'text', { x: 0, y: yy + 5, class: 's-op' }, enc ? 'Enc' : 'Dec');
         return shape;
@@ -458,42 +495,64 @@
         return c;
       };
       const kv = (g, yy) => {
-        const grp = svg(g, 'g', { transform: `translate(58 ${yy})` });
+        const grp = svg(g, 'g', { transform: `translate(60 ${yy})` });
         const box = svg(grp, 'rect', { x: -11, y: -16, width: 22, height: 32, rx: 2 });
         const k = svg(grp, 'text', { x: 0, y: -3, class: 's-kv' }, 'K');
         const v = svg(grp, 'text', { x: 0, y: 12, class: 's-kv' }, 'V');
-        const link = svg(g, 'line', { x1: 71, y1: yy, x2: DX - 36, y2: yy, class: 's-link', 'marker-end': 'url(#ms-y)' });
+        const link = svg(g, 'line', { x1: 73, y1: yy, x2: DX - 37, y2: yy, class: 's-link', 'marker-end': 'url(#ms-y)' });
         return { grp, box, text: [k, v], link };
       };
       s.cols = [0, 1, 2, 3, 4].map(() => {
         const g = svg(s, 'g');
-        const ghost = svg(g, 'g', { class: 's-ghost' });
-        stack(ghost, ROW.inp, PAL.ghost, PAL.ghostLine);
-        trap(ghost, ROW.enc, true); trap(ghost, ROW.dec, false);
-        svg(ghost, 'rect', { x: -13, y: ROW.lat - 13, width: 26, height: 26 });
-        stack(ghost, ROW.out, PAL.ghost, PAL.ghostLine);
-        const c = { g, ghost };
-        c.inp = svg(g, 'g'); stack(c.inp, ROW.inp, '#ffffff', PAL.ink);
+        const c = { g };
+        c.ghost = svg(g, 'g', { class: 's-ghost' });
+        ghostStack(c.ghost, ROW.inp);
+        trap(c.ghost, ROW.enc, true); trap(c.ghost, ROW.dec, false);
+        svg(c.ghost, 'rect', { x: -13, y: ROW.lat - 13, width: 26, height: 26 });
+        ghostStack(c.ghost, ROW.out);
+        c.range = svg(g, 'text', { x: OFF * 1.5, y: ROW.inp - CH / 2 - 18, class: 's-range' });
+        c.inp = cards(svg(g, 'g'), ROW.inp, 0);
         c.a1 = svg(g, 'line', { x1: 0, y1: ROW.inp + 22, x2: 0, y2: ROW.enc - 24, class: 's-arrow' });
         c.encG = svg(g, 'g'); c.enc = trap(c.encG, ROW.enc, true);
         c.a2 = svg(g, 'line', { x1: 0, y1: ROW.enc + 22, x2: 0, y2: ROW.lat - 24, class: 's-arrow' });
-        c.lat = cube(g, ROW.lat);
+        c.latG = svg(g, 'g'); c.lat = cube(c.latG, ROW.lat);
         c.a3 = svg(g, 'line', { x1: 0, y1: ROW.lat + 16, x2: 0, y2: ROW.dec - 24, class: 's-arrow' });
         c.decG = svg(g, 'g'); c.dec = trap(c.decG, ROW.dec, false);
-        c.a4 = svg(g, 'line', { x1: 0, y1: ROW.dec + 22, x2: 0, y2: ROW.out - 30, class: 's-arrow' });
-        c.out = svg(g, 'g'); stack(c.out, ROW.out, PAL.out, PAL.outLine);
+        c.a4 = svg(g, 'line', { x1: 0, y1: ROW.dec + 22, x2: 0, y2: ROW.out - 32, class: 's-arrow' });
+        c.out = cards(svg(g, 'g'), ROW.out, 1);
+        // Copies of the cards that travel into the encoder and out of the decoder.
+        c.toEnc = svg(g, 'g'); c.toEncCards = cards(c.toEnc, ROW.inp, 0);
+        c.fromDec = svg(g, 'g'); c.fromDecCards = cards(c.fromDec, ROW.out, 1);
         c.kvE = kv(g, ROW.enc); c.kvD = kv(g, ROW.dec);
-        c.tag = svg(g, 'text', { x: 58, y: ROW.enc - 26, class: 's-tag' }, 'KV cache');
+        c.tag = svg(g, 'text', { x: 60, y: ROW.enc - 26, class: 's-tag' }, 'KV cache');
         return c;
       });
+      // Two players: the input as it arrives, and the LiveVAE output up to the last decoded frame.
+      const player = (yy, title, sheet) => {
+        const g = svg(s, 'g');
+        svg(g, 'text', { x: 548, y: yy - 10, class: 's-ptitle' + (sheet ? ' out' : '') }, title);
+        svg(g, 'rect', { x: 548, y: yy, width: 208, height: 120, class: 's-blank' });
+        const img = frameImage(g, sheet, 548, yy, 208, 120);
+        const count = svg(g, 'text', { x: 548, y: yy + 140, class: 's-count' });
+        return { img, count };
+      };
+      s.inPlayer = player(64, 'Input stream', 0);
+      s.outPlayer = player(286, 'LiveVAE output', 1);
     }
-    // Three steps per pass; the last one stops before the slide, so the final frame is complete.
-    const steps = 2.8 * t, f = steps - Math.floor(steps);
-    const shift = ease(part(f, .86, 1));
-    const inOn = ease(part(f, 0, .12)), encOn = part(f, .1, .18), latOn = part(f, .38, .46);
-    const decOn = part(f, .44, .5), outOn = part(f, .72, .82);
-    const encBusy = part(f, .14, .2) * (1 - part(f, .34, .4));
-    const decBusy = part(f, .48, .54) * (1 - part(f, .66, .72));
+
+    // One step per latent; the last step stops before the slide so the final frame is complete.
+    const tt = clamp(t / .96) * LATENTS;
+    const k = Math.min(LATENTS - 1, Math.floor(tt)), f = Math.min(1, tt - k);
+    const shift = k < LATENTS - 1 ? ease(part(f, .88, 1)) : 0;
+    const arrive = part(f, 0, .16);
+    const toEnc = ease(part(f, .18, .34));
+    const encBusy = part(f, .2, .26) * (1 - part(f, .36, .42));
+    const latOn = ease(part(f, .36, .46));
+    const decOn = part(f, .44, .5);
+    const decBusy = part(f, .48, .54) * (1 - part(f, .62, .68));
+    const fromDec = ease(part(f, .56, .72));
+    const outOn = part(f, .7, .74);
+    const play = part(f, .72, .84);
     const op = (node, a) => { node.style.opacity = a; };
     // K/V state: 2 written by the current step (purple), 1 cache read by the next step (yellow), 0 evicted.
     const styleKv = (kv, state, pulse) => {
@@ -504,18 +563,48 @@
       kv.box.setAttribute('stroke-width', 1.3 + 1.2 * pulse);
       kv.text.forEach(x => x.setAttribute('fill', hi ? mix(PAL.gold, PAL.queryDark, u) : mix(PAL.ghostLine, PAL.gold, u)));
     };
+    // Show the frames of latent L on a set of cards; `count` cards are visible (newest in front).
+    const fill = (cardSet, L, count, sheet) => {
+      const [a, b] = chunk(L), n = b - a + 1;
+      cardSet.forEach(c => {
+        const visible = c.j < n && count > n - 1 - c.j;
+        c.style.opacity = visible ? clamp(count - (n - 1 - c.j)) : 0;
+        if (c.j < n) c.img.show(b - c.j);
+      });
+      return n;
+    };
+
     s.cols.forEach((c, i) => {
-      const r = i - 3, rr = r - shift;
+      const r = i - 3, rr = r - shift, L = k + r;
       c.g.setAttribute('transform', `translate(${X0 + rr * DX} 0)`);
-      op(c.g, rr < -2 ? clamp((rr + 2.7) / .7) : 1);
-      const done = r < 0 ? 1 : 0, now = r === 0;
-      const vIn = now ? inOn : done, vEnc = now ? encOn : done, vLat = now ? latOn : done;
-      const vDec = now ? decOn : done, vOut = now ? outOn : done;
-      op(c.inp, vIn);
-      c.inp.setAttribute('transform', `translate(0 ${-24 * (1 - vIn)})`);
-      op(c.a1, vEnc); op(c.encG, vEnc); op(c.a2, vLat); op(c.lat, vLat);
-      op(c.a3, vDec); op(c.decG, vDec); op(c.a4, vOut); op(c.out, vOut);
-      op(c.ghost, r >= 0 ? 1 : 0);
+      op(c.g, L < 0 ? 0 : rr < -2 ? clamp((rr + 2.6) / .6) : 1);
+      const now = r === 0, done = r < 0, future = r > 0;
+      op(c.ghost, future || now ? 1 : 0);
+      if (future || L < 0) {
+        [c.inp, c.out].forEach(set => set.forEach(x => op(x, 0)));
+        [c.a1, c.a2, c.a3, c.a4, c.encG, c.latG, c.decG, c.toEnc, c.fromDec, c.range, c.kvE.grp, c.kvD.grp, c.kvE.link, c.kvD.link, c.tag].forEach(x => op(x, 0));
+        return;
+      }
+      const n = chunk(L)[1] - chunk(L)[0] + 1;
+      // Input cards land one by one; copies then travel down into the encoder and vanish.
+      fill(c.inp, L, done ? n : arrive * n, 0);
+      c.range.textContent = rangeText(L);
+      op(c.range, done ? 1 : clamp(arrive * 4));
+      fill(c.toEncCards, L, n, 0);
+      op(c.toEnc, now ? (toEnc > 0 ? 1 - part(f, .3, .34) : 0) : 0);
+      c.toEnc.setAttribute('transform', `translate(0 ${(ROW.enc - ROW.inp) * toEnc}) translate(0 ${ROW.inp}) scale(${1 - .55 * toEnc}) translate(0 ${-ROW.inp})`);
+      op(c.a1, done ? 1 : part(f, .16, .2)); op(c.encG, done ? 1 : part(f, .16, .2));
+      op(c.a2, done ? 1 : latOn); op(c.latG, done ? 1 : latOn);
+      c.lat.setAttribute('transform', `translate(0 ${ROW.lat}) scale(${done ? 1 : .4 + .6 * latOn}) translate(0 ${-ROW.lat})`);
+      op(c.a3, done ? 1 : decOn); op(c.decG, done ? 1 : decOn);
+      // Decoded frames leave the decoder and land in the output stack.
+      fill(c.fromDecCards, L, n, 1);
+      op(c.fromDec, now ? part(f, .56, .6) * (1 - part(f, .72, .75)) : 0);
+      c.fromDec.setAttribute('transform', `translate(0 ${(ROW.dec - ROW.out) * (1 - fromDec)}) translate(0 ${ROW.out}) scale(${.45 + .55 * fromDec}) translate(0 ${-ROW.out})`);
+      op(c.a4, done ? 1 : part(f, .56, .62));
+      fill(c.out, L, n, 1);
+      if (now) c.out.forEach(x => op(x, +x.style.opacity * outOn));
+
       // The current column is outlined in purple, as in the method figure.
       const cur = now ? 1 - shift : 0;
       for (const [shape, busy] of [[c.enc, now ? encBusy : 0], [c.dec, now ? decBusy : 0]]) {
@@ -525,15 +614,25 @@
       }
       for (const a of [c.a1, c.a2, c.a3, c.a4]) a.setAttribute('stroke', mix(PAL.arrow, PAL.query, cur));
       let stateE = 0, stateD = 0, showE = 1, showD = 1, link = 0;
-      if (now) { stateE = stateD = 2 - shift; showE = part(f, .3, .38); showD = part(f, .62, .7); link = shift; }
+      if (now) { stateE = stateD = 2 - shift; showE = part(f, .34, .4); showD = part(f, .66, .72); link = shift; }
       if (r === -1) { stateE = stateD = 1 - shift; link = 1 - shift; }
-      if (r > 0) showE = showD = 0;
       op(c.kvE.grp, showE); op(c.kvD.grp, showD);
       styleKv(c.kvE, stateE, r === -1 ? encBusy : 0);
       styleKv(c.kvD, stateD, r === -1 ? decBusy : 0);
       op(c.kvE.link, link); op(c.kvD.link, link);
       op(c.tag, r === -1 ? 1 - shift : now ? shift : 0);
     });
+
+    // Players: the input shows the newest arrived frame, the output the newest decoded frame,
+    // one latent behind the input.
+    const [a0, b0] = chunk(k);
+    const lastIn = arrive > 0 ? a0 + Math.min(b0 - a0, Math.floor(arrive * (b0 - a0 + 1))) : k > 0 ? chunk(k - 1)[1] : -1;
+    const lastOut = play > 0 ? a0 + Math.min(b0 - a0, Math.floor(play * (b0 - a0 + 1))) : k > 0 ? chunk(k - 1)[1] : -1;
+    for (const [p, i, label] of [[s.inPlayer, lastIn, 'arrived'], [s.outPlayer, lastOut, 'decoded']]) {
+      op(p.img, i < 0 ? 0 : 1);
+      if (i >= 0) p.img.show(i);
+      p.count.textContent = i < 0 ? 'waiting for the first latent' : `frame ${i} ${label}`;
+    }
   }
 
   const method = document.getElementById('method-explainer');
