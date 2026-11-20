@@ -177,6 +177,7 @@ figure.wide figcaption { padding: 0 24px; }
 .ex-stage .math { font-family: "Times New Roman", Times, serif; font-style: italic; font-size: 19px; fill: #2b2f36; }
 .ex-stage .math .sub { font-size: 12px; font-style: normal; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; }
 .ex-stage .math .plain { font-style: normal; }
+.ex-stage .math.small-math { font-size: 15px; }
 .ex-stage .scene { transition: opacity .45s ease; }
 .ex-controls { display: flex; align-items: center; gap: 12px; margin-top: 4px; }
 .ex-play {
