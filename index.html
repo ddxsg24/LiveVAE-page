@@ -81,36 +81,85 @@
 <section>
   <h2>Method</h2>
   <p>LiveVAE replaces the convolutional encoder and decoder with stacks of causal window attention blocks. Each token attends only to a small spatial window in the current frame and the previous frame, so the cost per frame stays fixed and the KV cache stays bounded during streaming. Training is a three stage progressive distillation from the pretrained VAE: the streaming encoder is distilled to match the pretrained latents, the streaming decoder is distilled on those latents, and both are then finetuned jointly. Because the latent space is preserved, LiveVAE works with existing diffusion models without retraining them.</p>
+
+  <figure class="explainer" id="stream-explainer" aria-label="Streaming inference with causal window attention, step by step.">
+    <div class="ex-head">
+      <button type="button" class="ex-nav ex-prev" aria-label="Previous step"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button>
+      <div class="ex-words" aria-live="polite">
+        <div class="ex-beat" data-dur="8.5">
+          <p class="ex-title"><span class="ex-n">1</span>Process each chunk as it arrives</p>
+          <p class="ex-line">Every step encodes a new chunk of frames into one latent frame and decodes it right away. The only thing carried to the next step is the keys and values of this one.</p>
+        </div>
+        <div class="ex-beat" data-dur="7">
+          <p class="ex-title"><span class="ex-n">2</span>Attend to a local window</p>
+          <p class="ex-line">Inside a latent frame, each query token attends only to the 7&times;7 tokens around it. Near the border the window stays inside the frame, so it always holds 49 tokens.</p>
+        </div>
+        <div class="ex-beat" data-dur="6.5">
+          <p class="ex-title"><span class="ex-n">3</span>Look one step back</p>
+          <p class="ex-line">The window also covers the same region of the previous latent frame, a 2&times;7&times;7 window of 98 keys per query at any resolution. Older frames are never read.</p>
+        </div>
+        <div class="ex-beat" data-dur="7">
+          <p class="ex-title"><span class="ex-n">4</span>Two 2D passes, merged exactly</p>
+          <p class="ex-line">The query attends to the cached keys and values of frame <i>t</i>&minus;1 and to those of frame <i>t</i> in two passes. Weighting the two outputs by a softmax over their log normalizers equals one softmax over both frames.</p>
+        </div>
+        <div class="ex-beat" data-dur="8">
+          <p class="ex-title"><span class="ex-n">5</span>A cache that never grows</p>
+          <p class="ex-line">After each step the new keys and values replace the old ones, so the cache always holds one latent frame. Memory and compute per step stay flat however long the stream runs.</p>
+        </div>
+      </div>
+      <button type="button" class="ex-nav ex-next" aria-label="Next step"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg></button>
+    </div>
+    <div class="ex-stage-wrap">
+      <svg class="ex-stage" viewBox="0 0 1000 460" role="img" aria-label="Animated schematic of streaming encoding and decoding with causal window attention"></svg>
+    </div>
+    <div class="ex-controls">
+      <button type="button" class="ex-play" aria-label="Play"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="i-play" d="M8 5v14l11-7z"/><path class="i-pause" d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg></button>
+      <div class="ex-bar">
+        <button type="button" class="ex-seg" style="--w:8.5" aria-label="Step 1"><i></i></button>
+        <button type="button" class="ex-seg" style="--w:7" aria-label="Step 2"><i></i></button>
+        <button type="button" class="ex-seg" style="--w:6.5" aria-label="Step 3"><i></i></button>
+        <button type="button" class="ex-seg" style="--w:7" aria-label="Step 4"><i></i></button>
+        <button type="button" class="ex-seg" style="--w:8" aria-label="Step 5"><i></i></button>
+      </div>
+      <span class="ex-count">1 / 5</span>
+    </div>
+    <figcaption><b>Streaming inference with causal window attention.</b> A schematic: grid sizes are illustrative, and the chart in step 5 shows trends only. Use the arrows or the progress bar to move between steps.</figcaption>
+  </figure>
+
   <figure class="wide">
     <img src="static/images/method_overview.png" alt="Overview of LiveVAE: streaming encoder and decoder architecture, causal window attention, three stage progressive distillation, and streaming inference with a bounded KV cache." width="2400" height="1782" loading="lazy">
     <figcaption><b>Overview of LiveVAE.</b> (a) Encoder and decoder architecture. (b) Causal window attention. (c) Three stage progressive distillation. (d) Streaming inference with a bounded KV cache.</figcaption>
   </figure>
 </section>
 
-<section>
-  <h2>Reference to Video Generation</h2>
-  <p>The same generated latents are decoded by the official MiniMax-H3 VAE and by LiveVAE. Each example shows the code rendered condition video, the H3 decoding and the LiveVAE decoding side by side.</p>
-
-  <div class="gallery">
-    <div class="video-head"><span>Code video</span><span>MiniMax-H3 VAE</span><span class="ours">LiveVAE (ours)</span></div>
-
-    <figure class="clip"><figcaption>Gaming</figcaption>
-      <video data-src="static/videos/gaming_01.mp4" poster="static/videos/gaming_01.jpg" muted loop playsinline preload="none" width="1944" height="360"></video></figure>
-    <figure class="clip"><figcaption>Robotics simulation</figcaption>
-      <video data-src="static/videos/robotics_simulation_01_a.mp4" poster="static/videos/robotics_simulation_01_a.jpg" muted loop playsinline preload="none" width="1944" height="360"></video></figure>
-    <figure class="clip"><figcaption>Scene and world editing</figcaption>
-      <video data-src="static/videos/scene_world_editing_01_a.mp4" poster="static/videos/scene_world_editing_01_a.jpg" muted loop playsinline preload="none" width="1944" height="360"></video></figure>
-    <figure class="clip"><figcaption>Trajectory variation</figcaption>
-      <video data-src="static/videos/trajectory_variation_01_a.mp4" poster="static/videos/trajectory_variation_01_a.jpg" muted loop playsinline preload="none" width="1944" height="360"></video></figure>
-    <figure class="clip"><figcaption>Physical grounding</figcaption>
-      <video data-src="static/videos/physical_grounding_01.mp4" poster="static/videos/physical_grounding_01.jpg" muted loop playsinline preload="none" width="1944" height="360"></video></figure>
-    <figure class="clip"><figcaption>Bullet time</figcaption>
-      <video data-src="static/videos/bullet_time_01.mp4" poster="static/videos/bullet_time_01.jpg" muted loop playsinline preload="none" width="1944" height="360"></video></figure>
-    <figure class="clip"><figcaption>Architectural cinematics</figcaption>
-      <video data-src="static/videos/architectural_cinematics_01.mp4" poster="static/videos/architectural_cinematics_01.jpg" muted loop playsinline preload="none" width="1944" height="360"></video></figure>
-    <figure class="clip"><figcaption>Product cinematography</figcaption>
-      <video data-src="static/videos/product_cinematography_01.mp4" poster="static/videos/product_cinematography_01.jpg" muted loop playsinline preload="none" width="1944" height="360"></video></figure>
+<section id="results">
+  <h2>Results</h2>
+  <div class="tabs" role="tablist" data-group="results" aria-label="Result type">
+    <button type="button" role="tab" data-tab="recon">Reconstruction</button>
+    <button type="button" role="tab" data-tab="r2v">Reference to video</button>
+    <button type="button" role="tab" data-tab="t2v">Text to video</button>
   </div>
+
+  <div role="tabpanel" data-group="results" data-tab="recon">
+    <p class="panel-note">Each clip is encoded and decoded at 720p by every VAE. Clips keep the frame rate of their source, so their lengths differ.</p>
+    <div class="tabs sub" role="tablist" data-group="recon" aria-label="Latent space">
+      <button type="button" role="tab" data-tab="h3">MiniMax-H3</button>
+      <button type="button" role="tab" data-tab="wan22">Wan2.2</button>
+    </div>
+    <div role="tabpanel" data-group="recon" data-tab="h3"><div class="gallery" data-task="recon_h3"></div></div>
+    <div role="tabpanel" data-group="recon" data-tab="wan22"><div class="gallery" data-task="recon_wan22"></div></div>
+  </div>
+
+  <div role="tabpanel" data-group="results" data-tab="r2v">
+    <p class="panel-note">Reference to video generation on MiniMax-H3 from the same code rendered video and prompt, once with the official VAE and once with LiveVAE encoding the reference and decoding the result.</p>
+    <div class="gallery" data-task="r2v"></div>
+  </div>
+
+  <div role="tabpanel" data-group="results" data-tab="t2v">
+    <p class="panel-note">The same MiniMax-H3 latents decoded by the official VAE and by LiveVAE, so only the decoder differs.</p>
+    <div class="gallery" data-task="t2v"></div>
+  </div>
+  <p class="hint">Click a clip to restart it.</p>
 </section>
 
 <section>
@@ -149,5 +198,6 @@
 </footer>
 
 <script src="static/js/main.js"></script>
+<script src="static/js/streaming.js"></script>
 </body>
 </html>
