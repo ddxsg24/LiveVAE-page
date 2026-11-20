@@ -1,0 +1,261 @@
+{
+  "gaming_01": {
+    "task": "r2v",
+    "frames": 124,
+    "fps": 24,
+    "seconds": 5.17,
+    "width": 1944,
+    "height": 360,
+    "grid": [
+      3,
+      1
+    ],
+    "panel": [
+      640,
+      360
+    ],
+    "gutter": 12,
+    "source_frames": [
+      124,
+      124,
+      124
+    ],
+    "source_fps": [
+      24,
+      24,
+      24
+    ],
+    "agreement_db": {
+      "first_frame": 36.8,
+      "median": 31.3
+    },
+    "title": "Gaming",
+    "labels": [
+      "Code video",
+      "MiniMax-H3",
+      "LiveVAE (ours)"
+    ]
+  },
+  "robotics_simulation_01_a": {
+    "task": "r2v",
+    "frames": 124,
+    "fps": 24,
+    "seconds": 5.17,
+    "width": 1944,
+    "height": 360,
+    "grid": [
+      3,
+      1
+    ],
+    "panel": [
+      640,
+      360
+    ],
+    "gutter": 12,
+    "source_frames": [
+      124,
+      124,
+      124
+    ],
+    "source_fps": [
+      24,
+      24,
+      24
+    ],
+    "agreement_db": {
+      "first_frame": 35.3,
+      "median": 23.4
+    },
+    "title": "Robotics simulation",
+    "labels": [
+      "Code video",
+      "MiniMax-H3",
+      "LiveVAE (ours)"
+    ]
+  },
+  "scene_world_editing_01_a": {
+    "task": "r2v",
+    "frames": 124,
+    "fps": 24,
+    "seconds": 5.17,
+    "width": 1944,
+    "height": 360,
+    "grid": [
+      3,
+      1
+    ],
+    "panel": [
+      640,
+      360
+    ],
+    "gutter": 12,
+    "source_frames": [
+      124,
+      124,
+      124
+    ],
+    "source_fps": [
+      24,
+      24,
+      24
+    ],
+    "agreement_db": {
+      "first_frame": 24.8,
+      "median": 27.9
+    },
+    "title": "Scene and world editing",
+    "labels": [
+      "Code video",
+      "MiniMax-H3",
+      "LiveVAE (ours)"
+    ]
+  },
+  "trajectory_variation_01_a": {
+    "task": "r2v",
+    "frames": 124,
+    "fps": 24,
+    "seconds": 5.17,
+    "width": 1944,
+    "height": 360,
+    "grid": [
+      3,
+      1
+    ],
+    "panel": [
+      640,
+      360
+    ],
+    "gutter": 12,
+    "source_frames": [
+      124,
+      124,
+      124
+    ],
+    "source_fps": [
+      24,
+      24,
+      24
+    ],
+    "agreement_db": {
+      "first_frame": 36.4,
+      "median": 36.5
+    },
+    "title": "Trajectory variation",
+    "labels": [
+      "Code video",
+      "MiniMax-H3",
+      "LiveVAE (ours)"
+    ]
+  },
+  "physical_grounding_01": {
+    "task": "r2v",
+    "frames": 124,
+    "fps": 24,
+    "seconds": 5.17,
+    "width": 1944,
+    "height": 360,
+    "grid": [
+      3,
+      1
+    ],
+    "panel": [
+      640,
+      360
+    ],
+    "gutter": 12,
+    "source_frames": [
+      124,
+      124,
+      124
+    ],
+    "source_fps": [
+      24,
+      24,
+      24
+    ],
+    "agreement_db": {
+      "first_frame": 20.7,
+      "median": 20.9
+    },
+    "title": "Physical grounding",
+    "labels": [
+      "Code video",
+      "MiniMax-H3",
+      "LiveVAE (ours)"
+    ]
+  },
+  "architectural_cinematics_01": {
+    "task": "r2v",
+    "frames": 124,
+    "fps": 24,
+    "seconds": 5.17,
+    "width": 1944,
+    "height": 360,
+    "grid": [
+      3,
+      1
+    ],
+    "panel": [
+      640,
+      360
+    ],
+    "gutter": 12,
+    "source_frames": [
+      124,
+      124,
+      124
+    ],
+    "source_fps": [
+      24,
+      24,
+      24
+    ],
+    "agreement_db": {
+      "first_frame": 29.4,
+      "median": 20.9
+    },
+    "title": "Architectural cinematics",
+    "labels": [
+      "Code video",
+      "MiniMax-H3",
+      "LiveVAE (ours)"
+    ]
+  },
+  "product_cinematography_01": {
+    "task": "r2v",
+    "frames": 124,
+    "fps": 24,
+    "seconds": 5.17,
+    "width": 1944,
+    "height": 360,
+    "grid": [
+      3,
+      1
+    ],
+    "panel": [
+      640,
+      360
+    ],
+    "gutter": 12,
+    "source_frames": [
+      124,
+      124,
+      124
+    ],
+    "source_fps": [
+      24,
+      24,
+      24
+    ],
+    "agreement_db": {
+      "first_frame": 37.7,
+      "median": 23.1
+    },
+    "title": "Product cinematography",
+    "labels": [
+      "Code video",
+      "MiniMax-H3",
+      "LiveVAE (ours)"
+    ]
+  }
+}
