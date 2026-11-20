@@ -189,46 +189,123 @@
     view.querySelector('.note').style.opacity = part(t, .8, .88);
   }
 
-  // A tilted 13 x 13 latent plane; the window and query are drawn inside its inner group.
-  const TILT = 'matrix(1 0 0.62 0.46 0 0)';
-  function plane(parent, x, y, cell, n) {
-    const g = svg(parent, 'g', { transform: `translate(${x} ${y})` });
-    const p = svg(g, 'g', { transform: TILT });
-    svg(p, 'rect', { width: cell * n, height: cell * n, class: 'plane' });
-    const d = [];
-    for (let k = 1; k < n; k++) d.push(`M${k * cell} 0v${cell * n}`, `M0 ${k * cell}h${cell * n}`);
-    svg(p, 'path', { d: d.join(''), class: 'plane-lines' });
-    return { g, p };
+  /* ---------- Paper style frames (method figure, panel b) ---------- */
+
+  const PAL = {
+    query: '#807dbb', queryDark: '#5c58a0', kvNew: '#e4e2f3',
+    win: '#fee391', winLine: '#e0a800', gold: '#8a6500',
+    ghost: '#fafaf9', ghostLine: '#a9afb8', ghostText: '#8b929d', ink: '#3d4450',
+    enc: '#fdd1a2', encLine: '#cd8e58', encTop: '#feddb8', encSide: '#f3b47c',
+    out: '#fccde5', outLine: '#e58fbf', arrow: '#b1b8c2',
+  };
+  const mix = (c1, c2, t) => {
+    const a = parseInt(c1.slice(1), 16), b = parseInt(c2.slice(1), 16);
+    const ch = s => Math.round(((a >> s) & 255) * (1 - t) + ((b >> s) & 255) * t);
+    return `rgb(${ch(16)},${ch(8)},${ch(0)})`;
+  };
+  const K = 7;                                              // window size
+  const winStart = (q, n) => clamp(q - (K - 1) / 2, 0, n - K); // shifts inward at borders, as in NAT
+
+  // Drawing order of the method figure: planes, then the dashed links, then windows and queries.
+  function layers(s) {
+    if (!s.layers) s.layers = { planes: svg(s, 'g'), links: svg(s, 'g', { class: 'o-links' }), wins: svg(s, 'g') };
+    return s.layers;
   }
+  // A latent frame of n x n tokens drawn as an oblique vertical plane: columns run right and up,
+  // rows run down. It is w wide, rises by `rise` across its width and is h tall; y is its top left corner.
+  function oframe(s, n, w, rise, h, y) {
+    const L = layers(s);
+    const f = { n, x: 0 };
+    f.local = (c, r) => [c * w / n, y - c * rise / n + r * h / n];
+    f.pt = (c, r) => { const [a, b] = f.local(c, r); return [a + f.x, b]; };
+    f.quad = (c0, r0, c1, r1) => [[c0, r0], [c1, r0], [c1, r1], [c0, r1]].map(p => f.local(...p).join(',')).join(' ');
+    f.g = svg(L.planes, 'g', { class: 'oframe' });
+    svg(f.g, 'polygon', { points: f.quad(0, 0, n, n), class: 'o-plane' });
+    const d = [];
+    for (let k = 1; k < n; k++) d.push('M' + f.local(k, 0) + 'L' + f.local(k, n), 'M' + f.local(0, k) + 'L' + f.local(n, k));
+    svg(f.g, 'path', { d: d.join(''), class: 'o-grid' });
+    svg(f.g, 'polygon', { points: f.quad(0, 0, n, n), class: 'o-edge' });
+    f.label = svg(f.g, 'text', { x: w / 2, y: y + h + 28, class: 'o-label' });
+    f.wg = svg(L.wins, 'g');
+    f.win = svg(f.wg, 'polygon', { class: 'o-win' });
+    f.query = svg(f.wg, 'polygon', { class: 'o-query' });
+    f.win.style.opacity = f.query.style.opacity = 0;
+    return f;
+  }
+  // role: 'unused' (dashed grey), 'past' (frame t − 1) or 'current' (frame t).
+  function place(f, x, role, name, alpha = 1) {
+    f.x = x;
+    f.g.setAttribute('transform', `translate(${x} 0)`);
+    f.wg.setAttribute('transform', `translate(${x} 0)`);
+    f.g.setAttribute('class', 'oframe ' + role);
+    if (name != null) f.label.textContent = name;
+    f.g.style.opacity = f.wg.style.opacity = alpha;
+  }
+  function setWin(f, c0, r0, alpha) {
+    f.win.setAttribute('points', f.quad(c0, r0, c0 + K, r0 + K));
+    f.win.style.opacity = alpha;
+  }
+  function setQuery(f, c, r, alpha) {
+    f.query.setAttribute('points', f.quad(c, r, c + 1, r + 1));
+    f.query.style.opacity = alpha;
+  }
+  // Four dashed lines join the window corners in frame a to the same corners in frame b.
+  const links = s => [0, 1, 2, 3].map(() => svg(layers(s).links, 'line'));
+  function setLinks(lines, a, b, c0, r0, grow = 1, alpha = 1) {
+    [[c0, r0], [c0 + K, r0], [c0 + K, r0 + K], [c0, r0 + K]].forEach(([c, r], i) => {
+      const [x1, y1] = a.pt(c, r), [x2, y2] = b.pt(c, r);
+      lines[i].setAttribute('x1', x1); lines[i].setAttribute('y1', y1);
+      lines[i].setAttribute('x2', x1 + (x2 - x1) * grow); lines[i].setAttribute('y2', y1 + (y2 - y1) * grow);
+      lines[i].style.opacity = grow > 0 ? alpha : 0;
+    });
+  }
+  // Math label: italic serif symbols with small upright subscripts. parts: [text, 'sub' | ''].
+  function mathText(parent, parts, attrs) {
+    const t = svg(parent, 'text', { class: 'o-math', ...attrs });
+    let low = false;
+    for (const [s, kind] of parts) {
+      const span = svg(t, 'tspan', {}, s);
+      if (kind === 'sub') { span.setAttribute('class', 'sub'); if (!low) span.setAttribute('dy', 5); low = true; }
+      else if (low) { span.setAttribute('dy', -5); low = false; }
+    }
+    return t;
+  }
+  function markers(s, prefix) {
+    const defs = svg(s, 'defs');
+    for (const [name, color] of [['g', PAL.arrow], ['y', PAL.winLine], ['p', PAL.query]]) {
+      const m = svg(defs, 'marker', { id: prefix + name, viewBox: '0 0 10 10', refX: 9, refY: 5, markerWidth: 7, markerHeight: 7, orient: 'auto-start-reverse' });
+      svg(m, 'path', { d: 'M0,1 L9,5 L0,9 z', fill: color });
+    }
+  }
+  const arrow = (parent, x1, y1, x2, y2, kind, prefix) =>
+    svg(parent, 'line', { x1, y1, x2, y2, class: 'o-arrow ' + kind, 'marker-end': `url(#${prefix}${kind})` });
+
+  // Four frames side by side, as in panel (b).
+  const ROW4 = { w: 100, rise: 80, h: 210, y: 112, pitch: 175, x0: 67 };
+  const ROLES = ['unused', 'past', 'current', 'unused'];
+  const NAMES = ['t − 2', 't − 1', 't', 't + 1'];
 
   function drawWindow(t, view) {
     const s = view.querySelector('svg');
-    const cell = 13, n = 13, w0 = 3 * cell, ws = 7 * cell;
-    const at = { back: [40, 22], front: [40, 118] };
-    if (!s.firstChild) {
-      const back = plane(s, ...at.back, cell, n);
-      // Edges joining the two windows into one 2 x 7 x 7 block, drawn between the planes.
-      const corner = ([ox, oy], cx, cy) => [ox + cx + .62 * cy, oy + .46 * cy];
-      const edges = svg(s, 'g', { class: 'edges' });
-      for (const [cx, cy] of [[w0, w0], [w0 + ws, w0], [w0, w0 + ws], [w0 + ws, w0 + ws]]) {
-        const [x1, y1] = corner(at.back, cx, cy), [x2, y2] = corner(at.front, cx, cy);
-        svg(edges, 'line', { x1, y1, x2, y2, pathLength: 1 });
-      }
-      const front = plane(s, ...at.front, cell, n);
-      back.g.classList.add('back');
-      front.g.classList.add('front');
-      for (const pl of [back, front]) svg(pl.p, 'rect', { x: w0, y: w0, width: ws, height: ws, class: 'win' });
-      svg(front.p, 'rect', { x: 6 * cell, y: 6 * cell, width: cell, height: cell, class: 'query' });
-      svg(s, 'text', { x: 360, y: 66, class: 'plane-label' }, 'Previous latent frame, t − 1');
-      svg(s, 'text', { x: 360, y: 162, class: 'plane-label' }, 'Current latent frame, t');
-      svg(s, 'text', { x: 360, y: 120, class: 'block-label' }, '2 × 7 × 7 window');
+    const n = 15, c0 = winStart(7, n), { w, rise, h, y, pitch, x0 } = ROW4;
+    if (!s.frames) {
+      s.frames = NAMES.map((name, i) => {
+        const f = oframe(s, n, w, rise, h, y);
+        place(f, x0 + i * pitch, ROLES[i], name);
+        return f;
+      });
+      s.links = links(s);
+      const [, prev, cur] = s.frames;
+      s.title = svg(s, 'text', { x: (prev.pt(7.5, 0)[0] + cur.pt(7.5, 0)[0]) / 2, y: 24, class: 'o-title' }, '2 × 7 × 7 window');
     }
-    s.querySelector('.back').style.opacity = ease(part(t, 0, .2));
-    s.querySelector('.front').style.opacity = ease(part(t, .1, .3));
-    s.querySelectorAll('.plane-label').forEach((l, i) => { l.style.opacity = ease(part(t, i * .1, .2 + i * .1)); });
-    s.querySelectorAll('.win, .query').forEach(r => { r.style.opacity = ease(part(t, .3, .5)); });
-    s.querySelectorAll('.edges line').forEach(l => { l.style.strokeDashoffset = 1 - ease(part(t, .5, .75)); });
-    s.querySelector('.block-label').style.opacity = part(t, .7, .85);
+    const [old, prev, cur, next] = s.frames;
+    const fade = (f, a, b) => { f.g.style.opacity = f.wg.style.opacity = ease(part(t, a, b)); };
+    fade(prev, 0, .16); fade(cur, .06, .22); fade(old, .12, .28); fade(next, .12, .28);
+    setWin(prev, c0, c0, ease(part(t, .22, .38)));
+    setWin(cur, c0, c0, ease(part(t, .22, .38)));
+    setQuery(cur, 7, 7, ease(part(t, .3, .42)));
+    setLinks(s.links, prev, cur, c0, c0, ease(part(t, .42, .7)));
+    s.title.style.opacity = part(t, .7, .84);
   }
 
   const locality = document.getElementById('locality-explainer');
@@ -236,179 +313,227 @@
 
   /* ---------- Method ---------- */
 
-  const N = 14, WIN = 7;
-  const winStart = q => clamp(q - 3, 0, N - WIN);   // the window shifts inward at borders
+  const N = 16;
 
-  // A frame of N x N tokens; cells[j * N + i].
-  let hatches = 0;
-  function tokenFrame(parent, x, y, cell, label) {
-    if (!parent.hatchId) {
-      parent.hatchId = 'hatch' + (++hatches);
-      const pattern = svg(svg(parent, 'defs'), 'pattern', { id: parent.hatchId, width: 6, height: 6,
-        patternUnits: 'userSpaceOnUse', patternTransform: 'rotate(45)' });
-      svg(pattern, 'line', { x1: 0, y1: 0, x2: 0, y2: 6, stroke: '#c9ced6', 'stroke-width': 2 });
-    }
-    const g = svg(parent, 'g', { transform: `translate(${x} ${y})` });
-    const cells = [];
-    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
-      cells.push(svg(g, 'rect', { x: i * cell + .5, y: j * cell + .5, width: cell - 1, height: cell - 1, rx: 1.2, class: 'tok' }));
-    }
-    const outline = svg(g, 'rect', { width: WIN * cell, height: WIN * cell, class: 'win-line' });
-    const hatch = svg(g, 'rect', { width: N * cell, height: N * cell, class: 'hatch', fill: `url(#${parent.hatchId})` });
-    const text = svg(g, 'text', { x: N * cell / 2, y: N * cell + 22, class: 'frame-label' }, label);
-    return { g, cells, outline, hatch, text, cell, x, y };
-  }
-  // Paint a frame: role 'current' (query + window), 'cached' (window), 'future' (masked) or 'idle'.
-  function paint(f, role, qi, qj, strength = 1) {
-    const wi = winStart(qi), wj = winStart(qj);
-    f.cells.forEach((c, k) => {
-      const i = k % N, j = Math.floor(k / N);
-      const inWin = i >= wi && i < wi + WIN && j >= wj && j < wj + WIN;
-      let cls = 'tok';
-      if (role === 'future') cls += ' masked';
-      else if (role !== 'idle' && inWin) cls += role === 'current' ? ' key' : ' key prev';
-      if (role === 'current' && i === qi && j === qj) cls = 'tok query';
-      c.setAttribute('class', cls);
-    });
-    const on = role === 'current' || role === 'cached';
-    f.outline.setAttribute('x', wi * f.cell);
-    f.outline.setAttribute('y', wj * f.cell);
-    f.outline.style.opacity = on ? strength : 0;
-    f.hatch.style.opacity = role === 'future' ? 1 : 0;
-    f.g.style.setProperty('--strength', strength);
-  }
   function drawMask(t, view) {
     const s = view.querySelector('svg');
+    const { w, rise, h, y, pitch, x0 } = ROW4;
     if (!s.frames) {
-      const cell = 11, w = N * cell, gap = (640 - 3 * w) / 4;
-      s.frames = ['t − 1', 't', 't + 1'].map((label, k) => tokenFrame(s, gap + k * (w + gap), 18, cell, label));
-      s.frames[2].text.textContent = 't + 1, masked';
-      s.link = svg(s, 'path', { class: 'link' });
+      s.frames = NAMES.map((name, i) => {
+        const f = oframe(s, N, w, rise, h, y);
+        place(f, x0 + i * pitch, ROLES[i], name);
+        return f;
+      });
+      s.frames[3].label.textContent = 't + 1, masked';
+      s.links = links(s);
     }
-    // The query traces a figure eight through frame t and reaches every border.
+    // The query moves through frame t along a figure eight that reaches every border.
     const u = t * 2 * Math.PI;
-    const qi = clamp(Math.round(6.5 + 6.6 * Math.sin(u)), 0, N - 1);
-    const qj = clamp(Math.round(6.5 + 6.6 * Math.sin(2 * u)), 0, N - 1);
-    const [prev, cur, fut] = s.frames;
-    paint(prev, 'cached', qi, qj);
-    paint(cur, 'current', qi, qj);
-    paint(fut, 'future', qi, qj);
-    // A curve from the query to its window in frame t - 1.
-    const cell = cur.cell;
-    const x1 = cur.x + (qi + .5) * cell, y1 = cur.y + (qj + .5) * cell;
-    const x2 = prev.x + (winStart(qi) + 3.5) * cell, y2 = prev.y + (winStart(qj) + 3.5) * cell;
-    s.link.setAttribute('d', `M${x1} ${y1}C${x1 - 40} ${y1 - 46} ${x2 + 40} ${y2 - 46} ${x2} ${y2}`);
+    const qc = clamp(Math.round(7.5 + 7.8 * Math.sin(u)), 0, N - 1);
+    const qr = clamp(Math.round(7.5 + 7.8 * Math.sin(2 * u + .35)), 0, N - 1);
+    const c0 = winStart(qc, N), r0 = winStart(qr, N);
+    const [, prev, cur] = s.frames;
+    setWin(prev, c0, r0, 1);
+    setWin(cur, c0, r0, 1);
+    setQuery(cur, qc, qr, 1);
+    setLinks(s.links, prev, cur, c0, r0);
   }
 
   function drawCache(t, view) {
     const s = view.querySelector('svg');
-    const cell = 9, w = N * cell, pitch = 150, x0 = (640 - 2 * pitch - w) / 2, y = 30;
+    const { w, rise, h, y, pitch, x0 } = ROW4;
     if (!s.frames) {
-      s.frames = ['t − 1', 't', 't + 1', 't + 2'].map(label => tokenFrame(s, 0, y, cell, label));
-      const tag = (x, text, cls) => {
-        const g = svg(s, 'g', { class: 'slot-tag ' + cls, transform: `translate(${x} ${y + w + 38})` });
-        svg(g, 'path', { d: `M0 0v-6h${w}v6`, class: 'bracket' });
-        svg(g, 'text', { x: w / 2, y: 18 }, text);
-        return g;
+      s.frames = ['t − 2', 't − 1', 't', 't + 1', 't + 2'].map(() => oframe(s, N, w, rise, h, y));
+      s.links = links(s);
+      const tag = (slot, text, cls) => {
+        const x = x0 + slot * pitch, yb = y + h + 44;
+        const g = svg(s, 'g', { class: 'o-tag ' + cls });
+        svg(g, 'path', { d: `M${x} ${yb - 6}v6h${w}v-6` });
+        svg(g, 'text', { x: x + w / 2, y: yb + 22 }, text);
       };
-      tag(x0, 'KV cache: 1 frame', 'cache');
-      tag(x0 + pitch, 'Current frame', 'current');
-      s.evict = svg(s, 'text', { x: x0 + w / 2, y: y - 10, class: 'evict' }, 'evicted');
-      s.arrive = svg(s, 'text', { x: x0 + 3 * pitch + w / 2, y: y - 10, class: 'arrive' }, 'new latent frame');
+      tag(1, 'KV cache: 1 frame', 'cache');
+      tag(2, 'Current frame', 'current');
+      s.evict = svg(s, 'text', { y: 30, class: 'o-note evict' }, 'evicted');
+      s.arrive = svg(s, 'text', { y: 30, class: 'o-note' }, 'new latent frame');
     }
-    // Before: t is current, t - 1 cached. After the slide: t + 1 is current, t cached, t - 1 evicted.
-    const slide = ease(part(t, .36, .66));
-    const fadeWin = 1 - part(t, .28, .36) + part(t, .68, .76);
-    const after = t >= .52;
-    const qi = 6, qj = 6;
+    // t is current and t − 1 cached; after the slide t + 1 is current, t cached and t − 1 evicted.
+    const slide = ease(part(t, .34, .64));
+    const show = clamp(1 - part(t, .24, .32) + part(t, .68, .76));
+    const names = ['t − 2', 't − 1', 't', 't + 1', 't + 2'];
+    const roleAt = p => (p === 1 ? 'past' : p === 2 ? 'current' : 'unused');
+    let past, cur;
     s.frames.forEach((f, k) => {
-      const x = x0 + (k - slide) * pitch;
-      f.g.setAttribute('transform', `translate(${x} ${y})`);
-      const slot = Math.round(k - slide);
-      const role = slot === 0 ? 'cached' : slot === 1 ? 'current' : slot === 2 ? 'future' : 'idle';
-      paint(f, role, qi, qj, clamp(fadeWin));
-      let alpha = 1;
-      if (k === 0) alpha = 1 - slide;          // t - 1 leaves the cache
-      if (k === 3) alpha = slide;              // t + 2 arrives as the new future frame
-      f.g.style.opacity = alpha;
+      const p = k - slide, slot = Math.round(p);
+      const alpha = k === 0 ? 1 - slide : k === 4 ? slide : 1;
+      place(f, x0 + p * pitch, roleAt(slot), names[k], alpha);
+      setWin(f, 0, 0, 0);
+      setQuery(f, 0, 0, 0);
+      if (slot === 1) past = f;
+      if (slot === 2) cur = f;
     });
-    s.frames[2].text.textContent = after ? 't + 1' : 't + 1, masked';
-    s.frames[3].text.textContent = 't + 2, masked';
-    s.evict.style.opacity = part(t, .36, .46) * (1 - part(t, .62, .7));
-    s.evict.setAttribute('x', Math.max(40, x0 - slide * pitch + w / 2));
-    s.arrive.style.opacity = part(t, .3, .38) * (1 - part(t, .62, .7));
-    s.arrive.setAttribute('x', Math.min(600, x0 + (3 - slide) * pitch + w / 2));
+    const c0 = winStart(8, N);
+    setWin(past, c0, c0, show);
+    setWin(cur, c0, c0, show);
+    setQuery(cur, 8, 8, show);
+    setLinks(s.links, past, cur, c0, c0, 1, show);
+    s.evict.setAttribute('x', s.frames[1].pt(N / 2, 0)[0]);
+    s.evict.style.opacity = part(t, .5, .6) * (1 - part(t, .86, .94));
+    s.arrive.setAttribute('x', s.frames[4].pt(N / 2, 0)[0]);
+    s.arrive.style.opacity = part(t, .3, .4) * (1 - part(t, .66, .74));
   }
 
   function drawMerge(t, view) {
     const s = view.querySelector('svg');
+    const w = 84, rise = 66, h = 170, y = 90, pitch = 175, x0 = 76;
     if (!s.frames) {
-      const cell = 10;
-      s.frames = [tokenFrame(s, 40, 18, cell, 't − 1'), tokenFrame(s, 220, 18, cell, 't')];
-      s.outs = [svg(s, 'text', { x: 110, y: 205, class: 'out' }, 'o, ℓ from t − 1'), svg(s, 'text', { x: 290, y: 205, class: 'out' }, 'o, ℓ from t')];
-      const sym = (v, i) => `<tspan font-style="italic">${v}</tspan><tspan class="sub" dy="4">${i}</tspan><tspan dy="-4">`;
-      s.outs[0].innerHTML = sym('o', 't−1') + ', </tspan>' + sym('ℓ', 't−1') + '</tspan>';
-      s.outs[1].innerHTML = sym('o', 't') + ', </tspan>' + sym('ℓ', 't') + '</tspan>';
+      markers(s, 'mm-');
+      s.frames = NAMES.map((name, i) => {
+        const f = oframe(s, N, w, rise, h, y);
+        place(f, x0 + i * pitch, ROLES[i], name);
+        // Labels sit left of the lowest corner, so the arrows below stay clear.
+        f.label.setAttribute('x', -10);
+        f.label.setAttribute('y', y + h - 2);
+        f.label.style.textAnchor = 'end';
+        return f;
+      });
+      s.links = links(s);
+      const [, prev, cur] = s.frames;
+      const c0 = winStart(7, N);
+      setWin(prev, c0, c0, 1); setWin(cur, c0, c0, 1); setQuery(cur, 7, 7, 1);
+      setLinks(s.links, prev, cur, c0, c0, 1, .5);
+      svg(s, 'text', { x: prev.x - 10, y: y + h + 26, class: 'o-note cache' }, 'from cache');
+      const g = s.drawing = svg(s, 'g');
+      const xa = prev.pt(7.5, 0)[0], xb = cur.pt(7.5, 0)[0], yw = prev.pt(7.5, c0 + K)[1] + 4;
+      const box = (x, yy, bw, bh, cls) => svg(g, 'rect', { x: x - bw / 2, y: yy, width: bw, height: bh, rx: 6, class: 'o-box ' + cls });
+      s.p1 = svg(g, 'g'); s.p2 = svg(g, 'g'); s.p3 = svg(g, 'g'); s.p4 = svg(g, 'g');
+      arrow(s.p1, xa, yw, xa, 302, 'y', 'mm-');
+      s.p1.append(box(xa, 306, 148, 36, 'pass'));
+      mathText(s.p1, [['o'], ['t−1', 'sub'], [', ℓ'], ['t−1', 'sub']], { x: xa, y: 330 });
+      svg(s.p1, 'text', { x: xa - 84, y: 329, class: 'o-side end' }, 'pass 1');
+      arrow(s.p2, xb, yw, xb, 302, 'p', 'mm-');
+      s.p2.append(box(xb, 306, 148, 36, 'pass now'));
+      mathText(s.p2, [['o'], ['t', 'sub'], [', ℓ'], ['t', 'sub']], { x: xb, y: 330 });
+      svg(s.p2, 'text', { x: xb + 84, y: 329, class: 'o-side' }, 'pass 2');
+      const xm = (xa + xb) / 2;
+      arrow(s.p3, xa + 20, 344, xm - 50, 366, 'g', 'mm-');
+      arrow(s.p3, xb - 20, 344, xm + 50, 366, 'g', 'mm-');
+      s.p3.append(box(xm, 370, 300, 58, 'merge'));
+      mathText(s.p3, [['o = w'], ['t−1', 'sub'], [' o'], ['t−1', 'sub'], [' + w'], ['t', 'sub'], [' o'], ['t', 'sub']], { x: xm, y: 395 });
+      mathText(s.p3, [['w = softmax(ℓ'], ['t−1', 'sub'], [', ℓ'], ['t', 'sub'], [')']], { x: xm, y: 418, class: 'o-math small' });
+      svg(s.p4, 'text', { x: xm, y: 452, class: 'o-note exact' }, 'exactly one softmax over both windows');
     }
-    const phase = t < .25 ? 0 : t < .5 ? 1 : t < .75 ? 2 : 3;
-    const [prev, cur] = s.frames;
-    paint(prev, 'cached', 6, 6, phase === 1 ? .25 : 1);
-    paint(cur, 'current', 6, 6, phase === 0 ? .25 : 1);
-    prev.g.style.opacity = phase === 1 ? .45 : 1;
-    cur.g.style.opacity = phase === 0 ? .45 : 1;
-    s.outs[0].style.opacity = phase === 0 ? part(t, .05, .15) : phase === 1 ? .45 : 1;
-    s.outs[1].style.opacity = phase === 1 ? part(t, .3, .4) : phase === 0 ? 0 : 1;
-    view.querySelectorAll('.eq').forEach(eq => eq.classList.toggle('on', +eq.dataset.phase === phase));
-    view.querySelectorAll('.eq').forEach(eq => eq.classList.toggle('done', +eq.dataset.phase < phase));
-    // Illustrative weights; they always sum to one.
-    const grow = ease(part(t, .52, .7));
-    const bars = view.querySelectorAll('.weights span i');
-    bars[0].style.width = 38 * grow + '%';
-    bars[1].style.width = 62 * grow + '%';
+    const [, prev, cur] = s.frames;
+    const p1 = ease(part(t, .04, .22)), p2 = ease(part(t, .3, .48)), p3 = ease(part(t, .56, .72)), p4 = part(t, .8, .9);
+    prev.win.style.opacity = .35 + .65 * Math.max(p1 * (1 - .5 * p2), p3);
+    cur.win.style.opacity = cur.query.style.opacity = .35 + .65 * Math.max(p2, p3);
+    s.p1.style.opacity = p1; s.p2.style.opacity = p2; s.p3.style.opacity = p3; s.p4.style.opacity = p4;
   }
 
-  // Streaming with the real clip: frame 0 alone, then four frames per latent.
-  const sprites = ['input', 'output'].map(name => {
-    const img = new Image();
-    img.src = 'static/explainer/walk_' + name + '.jpg';
-    return img;
-  });
-  const digits = '₀₁₂₃₄₅₆₇₈';
-  const latent = n => n < 0 ? '—' : 'z' + digits[n];
-  const first = k => k === 0 ? 0 : k * 4 - 3;
-  const range = k => k === 0 ? 'Frame 0' : 'Frames ' + first(k) + '–' + k * 4;
-  function showFrame(canvas, image, k) {
-    if (!image.naturalWidth) { image.onload = () => { canvas.dataset.frame = ''; }; return; }
-    if (canvas.dataset.frame === String(k)) return;
-    const ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    if (k >= 0) ctx.drawImage(image, (k % 7) * 200 + 1, Math.floor(k / 7) * 117 + 1, 194, 111, 0, 0, 194, 111);
-    canvas.dataset.frame = k;
-  }
+  // Streaming inference as in panel (d): one column per step, sliding left after each step.
   function drawStream(t, view) {
-    const get = id => document.getElementById(id);
-    const clock = Math.min(9.99999, t * 10);
-    const tick = Math.floor(clock), phase = clock - tick;
-    const emit = phase >= .58;
-    const encoding = tick < 9, decoding = tick > 0;
-    const sample = Math.min(1, phase / .56);
-    const input = encoding ? first(tick) + Math.floor((4 * tick - first(tick)) * sample) : 32;
-    const delivered = tick - 2 + Number(emit);
-    const output = delivered < 0 ? -1 : (emit
-      ? first(delivered) + Math.floor((4 * delivered - first(delivered)) * Math.min(1, (phase - .58) / .30))
-      : 4 * delivered);
-    showFrame(get('stream-input'), sprites[0], input);
-    showFrame(get('stream-output'), sprites[1], output);
-    get('input-range').textContent = encoding ? range(tick) : 'Input complete';
-    get('new-latent').textContent = latent(encoding ? tick - 1 + Number(emit) : 8);
-    get('decode-latent').textContent = latent(decoding ? tick - 1 : (emit ? 0 : -1));
-    get('encode-state').textContent = !encoding ? 'Complete' : emit ? 'Emitted' : 'Encoding';
-    get('decode-state').textContent = decoding ? (emit ? 'Emitted' : 'Decoding') : (emit ? 'Decoding' : 'Waiting');
-    get('output-range').textContent = delivered < 0 ? 'Waiting' : range(delivered);
-    const flow = view.querySelector('.stream-flow');
-    flow.classList.toggle('emitted', emit);
-    flow.classList.toggle('decoder-ready', decoding || emit);
-    get('chunk-index').textContent = 'Tick ' + (tick + 1) + ' / 10';
+    const s = view.querySelector('svg');
+    const ROW = { inp: 54, enc: 144, lat: 226, dec: 308, out: 390 };
+    const X0 = 530, DX = 160;
+    if (!s.cols) {
+      markers(s, 'ms-');
+      const fixed = svg(s, 'g');
+      [['input', 'inp'], ['encoder', 'enc'], ['latent', 'lat'], ['decoder', 'dec'], ['output', 'out']]
+        .forEach(([text, k]) => svg(fixed, 'text', { x: 118, y: ROW[k] + 5, class: 's-row' }, text));
+      [['t − 2', ''], ['t − 1', 'past'], ['t', 'current'], ['t + 1', '']]
+        .forEach(([text, cls], i) => svg(fixed, 'text', { x: X0 + (i - 2) * DX, y: 444, class: 's-t ' + cls }, text));
+
+      const stack = (g, yy, fill, stroke) => [8, 4, 0].map(d =>
+        svg(g, 'rect', { x: -30 + d, y: yy - 19 - d, width: 60, height: 38, rx: 3, fill, stroke, 'stroke-width': 1.3 }));
+      const trap = (g, yy, enc) => {
+        const top = enc ? 40 : 26, bot = enc ? 26 : 40;
+        const shape = svg(g, 'polygon', { points: `${-top},${yy - 20} ${top},${yy - 20} ${bot},${yy + 20} ${-bot},${yy + 20}` });
+        svg(g, 'text', { x: 0, y: yy + 5, class: 's-op' }, enc ? 'Enc' : 'Dec');
+        return shape;
+      };
+      const cube = (g, yy) => {
+        const a = 26, o = 8, c = svg(g, 'g');
+        svg(c, 'polygon', { points: `${-a / 2},${yy - a / 2} ${a / 2},${yy - a / 2} ${a / 2 + o},${yy - a / 2 - o} ${-a / 2 + o},${yy - a / 2 - o}`, fill: PAL.encTop, stroke: PAL.encLine });
+        svg(c, 'polygon', { points: `${a / 2},${yy - a / 2} ${a / 2 + o},${yy - a / 2 - o} ${a / 2 + o},${yy + a / 2 - o} ${a / 2},${yy + a / 2}`, fill: PAL.encSide, stroke: PAL.encLine });
+        svg(c, 'rect', { x: -a / 2, y: yy - a / 2, width: a, height: a, fill: PAL.enc, stroke: PAL.encLine });
+        return c;
+      };
+      const kv = (g, yy) => {
+        const grp = svg(g, 'g', { transform: `translate(58 ${yy})` });
+        const box = svg(grp, 'rect', { x: -11, y: -16, width: 22, height: 32, rx: 2 });
+        const k = svg(grp, 'text', { x: 0, y: -3, class: 's-kv' }, 'K');
+        const v = svg(grp, 'text', { x: 0, y: 12, class: 's-kv' }, 'V');
+        const link = svg(g, 'line', { x1: 71, y1: yy, x2: DX - 36, y2: yy, class: 's-link', 'marker-end': 'url(#ms-y)' });
+        return { grp, box, text: [k, v], link };
+      };
+      s.cols = [0, 1, 2, 3, 4].map(() => {
+        const g = svg(s, 'g');
+        const ghost = svg(g, 'g', { class: 's-ghost' });
+        stack(ghost, ROW.inp, PAL.ghost, PAL.ghostLine);
+        trap(ghost, ROW.enc, true); trap(ghost, ROW.dec, false);
+        svg(ghost, 'rect', { x: -13, y: ROW.lat - 13, width: 26, height: 26 });
+        stack(ghost, ROW.out, PAL.ghost, PAL.ghostLine);
+        const c = { g, ghost };
+        c.inp = svg(g, 'g'); stack(c.inp, ROW.inp, '#ffffff', PAL.ink);
+        c.a1 = svg(g, 'line', { x1: 0, y1: ROW.inp + 22, x2: 0, y2: ROW.enc - 24, class: 's-arrow' });
+        c.encG = svg(g, 'g'); c.enc = trap(c.encG, ROW.enc, true);
+        c.a2 = svg(g, 'line', { x1: 0, y1: ROW.enc + 22, x2: 0, y2: ROW.lat - 24, class: 's-arrow' });
+        c.lat = cube(g, ROW.lat);
+        c.a3 = svg(g, 'line', { x1: 0, y1: ROW.lat + 16, x2: 0, y2: ROW.dec - 24, class: 's-arrow' });
+        c.decG = svg(g, 'g'); c.dec = trap(c.decG, ROW.dec, false);
+        c.a4 = svg(g, 'line', { x1: 0, y1: ROW.dec + 22, x2: 0, y2: ROW.out - 30, class: 's-arrow' });
+        c.out = svg(g, 'g'); stack(c.out, ROW.out, PAL.out, PAL.outLine);
+        c.kvE = kv(g, ROW.enc); c.kvD = kv(g, ROW.dec);
+        c.tag = svg(g, 'text', { x: 58, y: ROW.enc - 26, class: 's-tag' }, 'KV cache');
+        return c;
+      });
+    }
+    // Three steps per pass; the last one stops before the slide, so the final frame is complete.
+    const steps = 2.8 * t, f = steps - Math.floor(steps);
+    const shift = ease(part(f, .86, 1));
+    const inOn = ease(part(f, 0, .12)), encOn = part(f, .1, .18), latOn = part(f, .38, .46);
+    const decOn = part(f, .44, .5), outOn = part(f, .72, .82);
+    const encBusy = part(f, .14, .2) * (1 - part(f, .34, .4));
+    const decBusy = part(f, .48, .54) * (1 - part(f, .66, .72));
+    const op = (node, a) => { node.style.opacity = a; };
+    // K/V state: 2 written by the current step (purple), 1 cache read by the next step (yellow), 0 evicted.
+    const styleKv = (kv, state, pulse) => {
+      const hi = state > 1, u = hi ? state - 1 : state;
+      kv.box.setAttribute('fill', hi ? mix(PAL.win, PAL.kvNew, u) : mix(PAL.ghost, PAL.win, u));
+      kv.box.setAttribute('stroke', hi ? mix(PAL.winLine, PAL.query, u) : mix(PAL.ghostLine, PAL.winLine, u));
+      kv.box.setAttribute('stroke-dasharray', state < .5 ? '4 3' : 'none');
+      kv.box.setAttribute('stroke-width', 1.3 + 1.2 * pulse);
+      kv.text.forEach(x => x.setAttribute('fill', hi ? mix(PAL.gold, PAL.queryDark, u) : mix(PAL.ghostLine, PAL.gold, u)));
+    };
+    s.cols.forEach((c, i) => {
+      const r = i - 3, rr = r - shift;
+      c.g.setAttribute('transform', `translate(${X0 + rr * DX} 0)`);
+      op(c.g, rr < -2 ? clamp((rr + 2.7) / .7) : 1);
+      const done = r < 0 ? 1 : 0, now = r === 0;
+      const vIn = now ? inOn : done, vEnc = now ? encOn : done, vLat = now ? latOn : done;
+      const vDec = now ? decOn : done, vOut = now ? outOn : done;
+      op(c.inp, vIn);
+      c.inp.setAttribute('transform', `translate(0 ${-24 * (1 - vIn)})`);
+      op(c.a1, vEnc); op(c.encG, vEnc); op(c.a2, vLat); op(c.lat, vLat);
+      op(c.a3, vDec); op(c.decG, vDec); op(c.a4, vOut); op(c.out, vOut);
+      op(c.ghost, r >= 0 ? 1 : 0);
+      // The current column is outlined in purple, as in the method figure.
+      const cur = now ? 1 - shift : 0;
+      for (const [shape, busy] of [[c.enc, now ? encBusy : 0], [c.dec, now ? decBusy : 0]]) {
+        shape.setAttribute('fill', PAL.enc);
+        shape.setAttribute('stroke', mix(PAL.encLine, PAL.query, cur));
+        shape.setAttribute('stroke-width', 1.4 + .8 * cur + 1.4 * busy);
+      }
+      for (const a of [c.a1, c.a2, c.a3, c.a4]) a.setAttribute('stroke', mix(PAL.arrow, PAL.query, cur));
+      let stateE = 0, stateD = 0, showE = 1, showD = 1, link = 0;
+      if (now) { stateE = stateD = 2 - shift; showE = part(f, .3, .38); showD = part(f, .62, .7); link = shift; }
+      if (r === -1) { stateE = stateD = 1 - shift; link = 1 - shift; }
+      if (r > 0) showE = showD = 0;
+      op(c.kvE.grp, showE); op(c.kvD.grp, showD);
+      styleKv(c.kvE, stateE, r === -1 ? encBusy : 0);
+      styleKv(c.kvD, stateD, r === -1 ? decBusy : 0);
+      op(c.kvE.link, link); op(c.kvD.link, link);
+      op(c.tag, r === -1 ? 1 - shift : now ? shift : 0);
+    });
   }
 
   const method = document.getElementById('method-explainer');
